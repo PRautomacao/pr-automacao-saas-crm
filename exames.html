@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Exames — Bio Análise</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebar-mount"></div>
+  <div class="main-content">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="topbar-title">Exames e Serviços</div>
+          <div class="topbar-breadcrumb">Catálogo de exames e tabela de preços</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-primary" onclick="openNovoExame()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Novo Exame
+        </button>
+      </div>
+    </header>
+
+    <main class="page-content">
+      <div class="table-wrapper">
+        <div class="table-toolbar">
+          <div class="table-title">Catálogo de Exames</div>
+          <div class="table-actions">
+            <div class="search-input-wrapper">
+              <span class="search-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+              <input class="search-input" id="exSearch" placeholder="Buscar exame..." oninput="renderEx()" />
+            </div>
+            <select class="filter-select" id="exFiltTipo" onchange="renderEx()">
+              <option value="">Todos os tipos</option>
+              <option>Hematologia</option><option>Bioquímica</option><option>Hormônio</option>
+              <option>Urinálise</option><option>Vitaminas</option><option>Coagulação</option>
+            </select>
+            <select class="filter-select" id="exFiltStatus" onchange="renderEx()">
+              <option value="">Todos</option><option value="ativo">Ativos</option><option value="inativo">Inativos</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Nome do Exame</th>
+                <th>Tipo</th>
+                <th>Convênio</th>
+                <th>Valor (R$)</th>
+                <th>Status</th>
+                <th>Observações</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyEx"></tbody>
+          </table>
+        </div>
+        <div class="table-footer">
+          <span id="exCount"></span>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Modal Exame -->
+<div class="modal-overlay" id="modalExame">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modalExTitle">Novo Exame</div>
+      <button class="modal-close" onclick="UTILS.closeModal('modalExame')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="exId" />
+      <div class="form-row mb-4">
+        <div class="form-group">
+          <label class="form-label">Código</label>
+          <input class="form-input" id="exCodigo" placeholder="HEM001" />
+        </div>
+        <div class="form-group" style="flex:2">
+          <label class="form-label">Nome do Exame *</label>
+          <input class="form-input" id="exNome" placeholder="Nome completo do exame" />
+        </div>
+      </div>
+      <div class="form-row mb-4">
+        <div class="form-group">
+          <label class="form-label">Tipo</label>
+          <select class="form-select" id="exTipo">
+            <option>Hematologia</option><option>Bioquímica</option><option>Hormônio</option>
+            <option>Urinálise</option><option>Vitaminas</option><option>Coagulação</option><option>Outro</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Convênio</label>
+          <select class="form-select" id="exConvenio">
+            <option>Particular</option><option>Unimed</option><option>SUS</option><option>Bradesco</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Valor (R$)</label>
+          <input class="form-input" id="exValor" type="number" step="0.01" placeholder="0.00" />
+        </div>
+      </div>
+      <div class="form-row mb-4">
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <select class="form-select" id="exStatus">
+            <option value="ativo">Ativo</option><option value="inativo">Inativo</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Observações</label>
+        <textarea class="form-textarea" id="exObs" placeholder="Informações adicionais"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="UTILS.closeModal('modalExame')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveExame()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container"></div>
+
+<script src="js/auth.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/supabase.js"></script>
+<script src="js/data.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/sidebar.js"></script>
+<script>
+  AUTH.requireAuth();
+  SIDEBAR.render('exames.html');
+
+  function getFiltered(){
+    const q=document.getElementById('exSearch').value.toLowerCase();
+    const tp=document.getElementById('exFiltTipo').value;
+    const st=document.getElementById('exFiltStatus').value;
+    let list=DB.Exames.getAll();
+    if(q) list=list.filter(e=>e.nome.toLowerCase().includes(q)||e.codigo.toLowerCase().includes(q));
+    if(tp) list=list.filter(e=>e.tipo===tp);
+    if(st) list=list.filter(e=>e.status===st);
+    return list;
+  }
+
+  function renderEx(){
+    const list=getFiltered();
+    document.getElementById('exCount').innerHTML=UTILS.rowCountText(list.length,DB.Exames.getAll().length);
+    document.getElementById('tbodyEx').innerHTML=list.length===0
+      ?`<tr><td colspan="8"><div class="empty-state"><p>Nenhum exame encontrado.</p></div></td></tr>`
+      :list.map(e=>`<tr>
+        <td><code style="background:var(--gray-100);padding:2px 6px;border-radius:4px;font-size:11px">${UTILS.esc(e.codigo)}</code></td>
+        <td><strong>${UTILS.esc(e.nome)}</strong></td>
+        <td><span class="badge badge-info">${UTILS.esc(e.tipo)}</span></td>
+        <td>${UTILS.esc(e.convenio)}</td>
+        <td style="font-weight:700">${UTILS.currency(e.valor)}</td>
+        <td>${UTILS.statusBadge(e.status)}</td>
+        <td class="text-muted" style="font-size:12px">${UTILS.esc(e.observacoes||'—')}</td>
+        <td>
+          <div class="flex gap-2">
+            <button class="btn btn-ghost btn-icon btn-sm" onclick="editExame('${e.id}')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button class="btn btn-ghost btn-icon btn-sm" style="color:var(--accent-500)" onclick="deleteExame('${e.id}')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M9 6V4h6v2"/></svg>
+            </button>
+          </div>
+        </td>
+      </tr>`).join('');
+  }
+
+  function openNovoExame(){
+    document.getElementById('exId').value='';
+    document.getElementById('exCodigo').value='';
+    document.getElementById('exNome').value='';
+    document.getElementById('exValor').value='';
+    document.getElementById('exObs').value='';
+    document.getElementById('exTipo').value='Hematologia';
+    document.getElementById('exStatus').value='ativo';
+    document.getElementById('modalExTitle').textContent='Novo Exame';
+    UTILS.openModal('modalExame');
+  }
+
+  function editExame(id){
+    const e=DB.Exames.getById(id);if(!e)return;
+    document.getElementById('exId').value=e.id;
+    document.getElementById('exCodigo').value=e.codigo||'';
+    document.getElementById('exNome').value=e.nome;
+    document.getElementById('exTipo').value=e.tipo;
+    document.getElementById('exConvenio').value=e.convenio;
+    document.getElementById('exValor').value=e.valor;
+    document.getElementById('exStatus').value=e.status;
+    document.getElementById('exObs').value=e.observacoes||'';
+    document.getElementById('modalExTitle').textContent='Editar Exame';
+    UTILS.openModal('modalExame');
+  }
+
+  async function saveExame(){
+    const nome=document.getElementById('exNome').value.trim();
+    if(!nome){UTILS.toast('Nome é obrigatório','error');return;}
+    const id=document.getElementById('exId').value;
+    const d={
+      codigo:document.getElementById('exCodigo').value,
+      nome,tipo:document.getElementById('exTipo').value,
+      convenio:document.getElementById('exConvenio').value,
+      valor:parseFloat(document.getElementById('exValor').value)||0,
+      status:document.getElementById('exStatus').value,
+      observacoes:document.getElementById('exObs').value
+    };
+    if(id) await DB.Exames.update(id,d);
+    else { const r = await DB.Exames.add(d); if(!r) return; }
+    UTILS.toast(id?'Exame atualizado!':'Exame cadastrado!');
+    UTILS.closeModal('modalExame');
+    renderEx();
+  }
+
+  async function deleteExame(id){
+    if(!UTILS.confirm('Excluir este exame?'))return;
+    await DB.Exames.remove(id);
+    UTILS.toast('Exame excluído','warning');renderEx();
+  }
+
+  DB.init().then(() => {
+    renderEx();
+  });
+</script>
+</body>
+</html>

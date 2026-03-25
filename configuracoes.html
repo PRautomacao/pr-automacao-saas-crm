@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Configurações — Bio Análise</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebar-mount"></div>
+  <div class="main-content">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="topbar-title">Configurações</div>
+          <div class="topbar-breadcrumb">Dados da clínica, usuários e integrações</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-primary" onclick="saveAll()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          Salvar Configurações
+        </button>
+      </div>
+    </header>
+
+    <main class="page-content">
+
+      <div class="grid-2 mb-6">
+        <!-- Dados da Clínica -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🏥 Dados da Clínica</div>
+              <div class="card-subtitle">Informações institucionais</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="form-group mb-4">
+              <label class="form-label">Nome da Clínica</label>
+              <input class="form-input" id="cfgNome" />
+            </div>
+            <div class="form-group mb-4">
+              <label class="form-label">Razão Social</label>
+              <input class="form-input" id="cfgRazao" />
+            </div>
+            <div class="form-group mb-4">
+              <label class="form-label">Endereço</label>
+              <input class="form-input" id="cfgEndereco" />
+            </div>
+            <div class="form-row mb-4">
+              <div class="form-group">
+                <label class="form-label">Cidade</label>
+                <input class="form-input" id="cfgCidade" />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Telefone</label>
+                <input class="form-input" id="cfgTel" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">E-mail</label>
+                <input class="form-input" id="cfgEmail" type="email" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Preferências do Painel -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">⚙️ Preferências do Painel</div>
+              <div class="card-subtitle">Personalização visual e comportamento</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="form-group mb-4">
+              <label class="form-label">Cor do Tema</label>
+              <select class="form-select" id="cfgTema">
+                <option value="azul">Azul Corporativo (padrão)</option>
+                <option value="verde">Verde Saúde</option>
+                <option value="cinza">Cinza Neutro</option>
+              </select>
+            </div>
+            <div style="background:var(--gray-50);border-radius:8px;padding:16px;border:1px solid var(--gray-200);margin-top:8px">
+              <div class="form-label" style="margin-bottom:8px">Usuários com Acesso ao Sistema</div>
+              <div id="cfgUserList"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PCLAB Integration -->
+      <div class="card mb-6" style="border:2px solid rgba(26,79,160,0.15)">
+        <div class="card-header" style="background:linear-gradient(90deg,rgba(26,79,160,0.04),transparent)">
+          <div>
+            <div class="card-title" style="display:flex;align-items:center;gap:8px">
+              <span style="background:var(--primary-100);color:var(--primary-700);border-radius:6px;padding:4px 8px;font-size:12px;font-weight:700">🔗 PCLAB</span>
+              Integração com PCLAB API
+            </div>
+            <div class="card-subtitle">Configure aqui os parâmetros para futura integração automática de dados</div>
+          </div>
+          <div id="pclabStatusBadge"></div>
+        </div>
+        <div class="card-body">
+          <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;margin-bottom:20px;font-size:13px;color:#92400e">
+            ⚠️ <strong>Integração ainda não ativa.</strong> Os campos abaixo estão preparados para quando a integração com a PCLAB for implementada. Nenhum dado será enviado ou recebido por enquanto.
+          </div>
+          <div class="form-row mb-4">
+            <div class="form-group" style="flex:2">
+              <label class="form-label">URL da API PCLAB</label>
+              <input class="form-input" id="pclabUrl" placeholder="https://api.pclab.com.br/v1/" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Status</label>
+              <select class="form-select" id="pclabStatus">
+                <option value="desativado">Desativado</option>
+                <option value="teste">Modo Teste</option>
+                <option value="ativo">Ativo</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row mb-4">
+            <div class="form-group">
+              <label class="form-label">Token de Autenticação</label>
+              <input class="form-input" id="pclabToken" type="password" placeholder="••••••••••••••••" />
+            </div>
+          </div>
+          <div class="form-row mb-4">
+            <div class="form-group">
+              <label class="form-label">Webhook URL (receber eventos)</label>
+              <input class="form-input" id="pclabWebhook" placeholder="https://seudominio.com/webhook/pclab" />
+            </div>
+          </div>
+
+          <div style="background:var(--gray-50);border-radius:8px;padding:14px;border:1px solid var(--gray-200)">
+            <div class="form-label" style="margin-bottom:10px;color:var(--gray-600)">📋 Campos PCLAB esperados (para integração futura)</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px">
+              ${['attendance_id','patient_id','nome_paciente','telefone','sexo','data_nascimento','atendente','exame','convenio','valor_total','valor_pago','desconto','acrescimo','devedor','data_prevista_entrega','login_paciente_online','senha_paciente_online','qr_code_url'].map(f=>`<code style="background:var(--primary-50);color:var(--primary-700);border:1px solid var(--primary-100);padding:3px 8px;border-radius:4px;font-size:11px">${f}</code>`).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Danger Zone -->
+      <div class="card" style="border-color:var(--accent-100)">
+        <div class="card-header" style="background:#fff5f5">
+          <div>
+            <div class="card-title" style="color:var(--accent-600)">⚠️ Zona de Perigo</div>
+            <div class="card-subtitle">Ações irreversíveis — use com cuidado</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+            <div>
+              <div style="font-weight:600;font-size:14px">Resetar dados de demonstração</div>
+              <div class="text-muted text-sm">Remove todos os dados e recarrega os dados mockados iniciais</div>
+            </div>
+            <button class="btn btn-danger" onclick="resetData()">Resetar Dados</button>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<div class="toast-container"></div>
+
+<script src="js/auth.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/supabase.js"></script>
+<script src="js/data.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/sidebar.js"></script>
+<script>
+  AUTH.requireAuth(true);
+  SIDEBAR.render('configuracoes.html');
+
+  function loadConfig(){
+    const c = DB.Config.get();
+    document.getElementById('cfgNome').value     = c.clinica_nome||'';
+    document.getElementById('cfgRazao').value    = c.clinica_razao||'';
+    document.getElementById('cfgEndereco').value = c.clinica_endereco||'';
+    document.getElementById('cfgCidade').value   = c.clinica_cidade||'';
+    document.getElementById('cfgTel').value      = c.clinica_telefone||'';
+    document.getElementById('cfgEmail').value    = c.clinica_email||'';
+    document.getElementById('cfgTema').value     = c.tema_cor||'azul';
+    document.getElementById('pclabUrl').value    = c.pclab_url||'';
+    document.getElementById('pclabToken').value  = c.pclab_token||'';
+    document.getElementById('pclabWebhook').value= c.pclab_webhook||'';
+    document.getElementById('pclabStatus').value = c.pclab_status||'desativado';
+    // Status badge
+    const st = c.pclab_status||'desativado';
+    const badge = st==='ativo'?'<span class="badge badge-success">✓ Ativo</span>':st==='teste'?'<span class="badge badge-warning">Modo Teste</span>':'<span class="badge badge-gray">Desativado</span>';
+    document.getElementById('pclabStatusBadge').innerHTML = badge;
+    // Users list
+    const funcs = DB.Funcionarios.getAll();
+    document.getElementById('cfgUserList').innerHTML = funcs.map(f=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--gray-100)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:28px;height:28px;border-radius:50%;background:var(--primary-100);color:var(--primary-700);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">${f.nome.substring(0,2).toUpperCase()}</div>
+          <div>
+            <div style="font-size:13px;font-weight:600">${UTILS.esc(f.nome)}</div>
+            <div style="font-size:11px;color:var(--gray-400)">${UTILS.esc(f.login)}</div>
+          </div>
+        </div>
+        <div>${f.permissao==='admin'?'<span class="badge badge-danger">Admin</span>':'<span class="badge badge-info">Atendente</span>'}</div>
+      </div>`).join('');
+  }
+
+  function saveAll(){
+    DB.Config.save({
+      clinica_nome:     document.getElementById('cfgNome').value,
+      clinica_razao:    document.getElementById('cfgRazao').value,
+      clinica_endereco: document.getElementById('cfgEndereco').value,
+      clinica_cidade:   document.getElementById('cfgCidade').value,
+      clinica_telefone: document.getElementById('cfgTel').value,
+      clinica_email:    document.getElementById('cfgEmail').value,
+      tema_cor:         document.getElementById('cfgTema').value,
+      pclab_url:        document.getElementById('pclabUrl').value,
+      pclab_token:      document.getElementById('pclabToken').value,
+      pclab_webhook:    document.getElementById('pclabWebhook').value,
+      pclab_status:     document.getElementById('pclabStatus').value
+    });
+    UTILS.toast('Configurações salvas com sucesso!');
+    loadConfig();
+  }
+
+  function resetData(){
+    if(!UTILS.confirm('Isso vai apagar TODOS os dados e recarregar os dados de demonstração. Tem certeza?'))return;
+    Object.values(DB.KEYS).forEach(k=>localStorage.removeItem(k));
+    DB.seed && location.reload() || location.reload();
+  }
+
+  DB.init().then(() => {
+    loadConfig();
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fluxo de Caixa — Bio Análise</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebar-mount"></div>
+  <div class="main-content">
+
+    <header class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="topbar-title">Fluxo de Caixa</div>
+          <div class="topbar-breadcrumb">Controle financeiro detalhado</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-primary" onclick="openNewLancamento()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Novo Lançamento
+        </button>
+      </div>
+    </header>
+
+    <main class="page-content">
+
+      <!-- Summary -->
+      <div class="summary-row mb-6">
+        <div class="summary-item green">
+          <div class="summary-item-label">Entradas (período)</div>
+          <div class="summary-item-value" id="totEntradas">R$ 0,00</div>
+        </div>
+        <div class="summary-item red">
+          <div class="summary-item-label">Saídas (período)</div>
+          <div class="summary-item-value" id="totSaidas">R$ 0,00</div>
+        </div>
+        <div class="summary-item blue">
+          <div class="summary-item-label">Saldo do Período</div>
+          <div class="summary-item-value" id="totSaldo">R$ 0,00</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-item-label">Saldo Acumulado</div>
+          <div class="summary-item-value" id="totAcumulado">R$ 0,00</div>
+        </div>
+      </div>
+
+      <!-- Table -->
+      <div class="table-wrapper">
+        <div class="table-toolbar">
+          <div class="table-title">Movimentações</div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filter-bar">
+          <div class="form-group" style="min-width:120px;flex:0">
+            <label class="form-label">De</label>
+            <input class="form-input" id="filtDe" type="date" onchange="renderTable()" />
+          </div>
+          <div class="form-group" style="min-width:120px;flex:0">
+            <label class="form-label">Até</label>
+            <input class="form-input" id="filtAte" type="date" onchange="renderTable()" />
+          </div>
+          <div class="form-group" style="min-width:130px;flex:0">
+            <label class="form-label">Atendente</label>
+            <select class="form-select" id="filtAtendente" onchange="renderTable()">
+              <option value="">Todos</option>
+              <option>Adriana</option><option>Kaleb</option><option>Cida</option><option>Dr. Omar</option>
+            </select>
+          </div>
+          <div class="form-group" style="min-width:130px;flex:0">
+            <label class="form-label">Forma de Pgto</label>
+            <select class="form-select" id="filtForma" onchange="renderTable()">
+              <option value="">Todas</option>
+              <option>Pix</option><option>Dinheiro</option><option>Cartão</option><option>Parcelado</option>
+            </select>
+          </div>
+          <div class="form-group" style="min-width:110px;flex:0">
+            <label class="form-label">Tipo</label>
+            <select class="form-select" id="filtTipo" onchange="renderTable()">
+              <option value="">Todos</option>
+              <option value="entrada">Entradas</option>
+              <option value="saida">Saídas</option>
+            </select>
+          </div>
+          <div style="margin-top:22px">
+            <button class="btn btn-secondary btn-sm" onclick="clearFilters()">Limpar</button>
+          </div>
+        </div>
+
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Tipo</th>
+                <th>Paciente</th>
+                <th>Serviço</th>
+                <th>Forma</th>
+                <th>Parcelas</th>
+                <th>Atendente</th>
+                <th>Valor</th>
+                <th>Obs.</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyCaixa"></tbody>
+          </table>
+        </div>
+
+        <div class="table-footer">
+          <span id="caixaCount"></span>
+          <div id="caixaPagination"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Modal Lançamento -->
+<div class="modal-overlay" id="modalLancamento">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modalLancTitle">Novo Lançamento</div>
+      <button class="modal-close" onclick="UTILS.closeModal('modalLancamento')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="lId" />
+      <div class="form-row mb-4">
+        <div class="form-group">
+          <label class="form-label">Data *</label>
+          <input class="form-input" id="lData" type="date" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tipo *</label>
+          <select class="form-select" id="lTipo">
+            <option value="entrada">Entrada</option>
+            <option value="saida">Saída</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row mb-4">
+        <div class="form-group" style="flex:2">
+          <label class="form-label">Paciente</label>
+          <input class="form-input" id="lPaciente" placeholder="Nome do paciente (ou vazio para saída)" />
+        </div>
+      </div>
+      <div class="form-row mb-4">
+        <div class="form-group" style="flex:2">
+          <label class="form-label">Serviço / Descrição *</label>
+          <input class="form-input" id="lServico" placeholder="Exame ou descrição" />
+        </div>
+      </div>
+      <div class="form-row mb-4">
+        <div class="form-group">
+          <label class="form-label">Valor (R$) *</label>
+          <input class="form-input" id="lValor" type="number" step="0.01" min="0" placeholder="0.00" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Forma de Pgto</label>
+          <select class="form-select" id="lForma">
+            <option>Pix</option><option>Dinheiro</option><option>Cartão</option><option>Parcelado</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Parcelas</label>
+          <input class="form-input" id="lParcelas" type="number" min="1" max="12" value="1" />
+        </div>
+      </div>
+      <div class="form-row mb-4">
+        <div class="form-group">
+          <label class="form-label">Atendente</label>
+          <select class="form-select" id="lAtendente">
+            <option>Adriana</option><option>Kaleb</option><option>Cida</option><option>Dr. Omar</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Observações</label>
+        <textarea class="form-textarea" id="lObs" placeholder="Observações adicionais"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="UTILS.closeModal('modalLancamento')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveLancamento()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container"></div>
+
+<script src="js/auth.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/supabase.js"></script>
+<script src="js/data.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/sidebar.js"></script>
+<script>
+  AUTH.requireAuth(true); // admin only
+  SIDEBAR.render('caixa.html');
+
+  let page = 1;
+  const PER = 10;
+
+  // Set default dates to current month
+  function initFilters() {
+    const t = UTILS.today();
+    const ini = t.slice(0,8) + '01';
+    document.getElementById('filtDe').value  = ini;
+    document.getElementById('filtAte').value = t;
+  }
+
+  function getFiltered() {
+    const de   = document.getElementById('filtDe').value;
+    const ate  = document.getElementById('filtAte').value;
+    const at   = document.getElementById('filtAtendente').value;
+    const fm   = document.getElementById('filtForma').value;
+    const tp   = document.getElementById('filtTipo').value;
+    let list   = de && ate ? DB.Caixa.getByRange(de, ate) : DB.Caixa.getAll();
+    if (at)  list = list.filter(c => c.atendente === at);
+    if (fm)  list = list.filter(c => c.forma === fm);
+    if (tp)  list = list.filter(c => c.tipo === tp);
+    return list;
+  }
+
+  function updateTotals(list) {
+    const all    = DB.Caixa.getAll();
+    const ents   = list.filter(c=>c.tipo==='entrada').reduce((s,c)=>s+c.valor,0);
+    const saids  = list.filter(c=>c.tipo==='saida').reduce((s,c)=>s+c.valor,0);
+    const allEnt = all.filter(c=>c.tipo==='entrada').reduce((s,c)=>s+c.valor,0);
+    const allSai = all.filter(c=>c.tipo==='saida').reduce((s,c)=>s+c.valor,0);
+    document.getElementById('totEntradas').textContent  = UTILS.currency(ents);
+    document.getElementById('totSaidas').textContent    = UTILS.currency(saids);
+    document.getElementById('totSaldo').textContent     = UTILS.currency(ents-saids);
+    document.getElementById('totAcumulado').textContent = UTILS.currency(allEnt-allSai);
+  }
+
+  function renderTable(p = 1) {
+    page = p;
+    const list = getFiltered();
+    updateTotals(list);
+    const { items } = UTILS.paginate(list, page, PER);
+    document.getElementById('caixaCount').innerHTML = UTILS.rowCountText(items.length, list.length);
+    document.getElementById('tbodyCaixa').innerHTML = items.length === 0
+      ? `<tr><td colspan="10"><div class="empty-state"><p>Nenhuma movimentação encontrada.</p></div></td></tr>`
+      : items.map(c => `
+        <tr>
+          <td style="white-space:nowrap">${UTILS.date(c.data)}</td>
+          <td>${c.tipo==='entrada'?'<span class="badge badge-success">↑ Entrada</span>':'<span class="badge badge-danger">↓ Saída</span>'}</td>
+          <td>${UTILS.esc(c.paciente||'—')}</td>
+          <td class="text-muted">${UTILS.esc(c.servico)}</td>
+          <td>${UTILS.paymentBadge(c.forma)}</td>
+          <td style="text-align:center">${c.parcelas||1}x</td>
+          <td>${UTILS.esc(c.atendente||'—')}</td>
+          <td style="font-weight:800;color:${c.tipo==='entrada'?'var(--success-600)':'var(--accent-500)'}">${c.tipo==='entrada'?'+':'-'}${UTILS.currency(c.valor)}</td>
+          <td class="text-muted" style="font-size:12px">${UTILS.esc(c.obs||'—')}</td>
+          <td>
+            <button class="btn btn-ghost btn-icon btn-sm" style="color:var(--accent-500)" onclick="deleteLanc('${c.id}')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M9 6V4h6v2"/></svg>
+            </button>
+          </td>
+        </tr>`).join('');
+    const pages = Math.ceil(list.length/PER);
+    const pag   = document.getElementById('caixaPagination');
+    if (pages<=1){pag.innerHTML='';return;}
+    let btns='';for(let i=1;i<=pages;i++) btns+=`<button class="page-btn${i===page?' active':''}" onclick="renderTable(${i})">${i}</button>`;
+    pag.innerHTML=`<div class="pagination">${btns}</div>`;
+  }
+
+  function clearFilters() {
+    document.getElementById('filtAtendente').value='';
+    document.getElementById('filtForma').value='';
+    document.getElementById('filtTipo').value='';
+    initFilters(); renderTable();
+  }
+
+  function openNewLancamento() {
+    document.getElementById('lId').value='';
+    document.getElementById('lData').value=UTILS.today();
+    document.getElementById('lPaciente').value='';
+    document.getElementById('lServico').value='';
+    document.getElementById('lValor').value='';
+    document.getElementById('lParcelas').value='1';
+    document.getElementById('lObs').value='';
+    document.getElementById('modalLancTitle').textContent='Novo Lançamento';
+    UTILS.openModal('modalLancamento');
+  }
+
+  async function saveLancamento() {
+    const servico = document.getElementById('lServico').value.trim();
+    const valor   = parseFloat(document.getElementById('lValor').value);
+    if (!servico) { UTILS.toast('Informe o serviço/descrição','error'); return; }
+    if (!valor || valor<=0) { UTILS.toast('Informe um valor válido','error'); return; }
+    const d = {
+      data:     document.getElementById('lData').value,
+      tipo:     document.getElementById('lTipo').value,
+      paciente: document.getElementById('lPaciente').value,
+      servico,  valor,
+      forma:    document.getElementById('lForma').value,
+      parcelas: parseInt(document.getElementById('lParcelas').value)||1,
+      atendente:document.getElementById('lAtendente').value,
+      obs:      document.getElementById('lObs').value,
+      patient_id: ''
+    };
+    const r = await DB.Caixa.add(d);
+    if (!r) return;
+    UTILS.toast('Lançamento salvo!');
+    UTILS.closeModal('modalLancamento');
+    renderTable();
+  }
+
+  async function deleteLanc(id) {
+    if (!UTILS.confirm('Excluir este lançamento?')) return;
+    await DB.Caixa.remove(id);
+    UTILS.toast('Lançamento excluído','warning');
+    renderTable();
+  }
+
+  DB.init().then(() => {
+    initFilters();
+    renderTable();
+  });
+</script>
+</body>
+</html>

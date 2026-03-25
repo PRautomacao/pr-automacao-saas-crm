@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Atendimentos — Bio Análise</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebar-mount"></div>
+  <div class="main-content">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="topbar-title">Atendimentos</div>
+          <div class="topbar-breadcrumb">Registro de todos os atendimentos</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-primary" onclick="openNovoAtend()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Novo Atendimento
+        </button>
+      </div>
+    </header>
+
+    <main class="page-content">
+      <div class="summary-row mb-6">
+        <div class="summary-item blue">
+          <div class="summary-item-label">Total Registrados</div>
+          <div class="summary-item-value" id="atTotal">0</div>
+        </div>
+        <div class="summary-item green">
+          <div class="summary-item-label">Pagos</div>
+          <div class="summary-item-value" id="atPagos">0</div>
+        </div>
+        <div class="summary-item" style="--col:var(--warning-600)">
+          <div class="summary-item-label">Parciais</div>
+          <div class="summary-item-value" id="atParciais">0</div>
+        </div>
+        <div class="summary-item red">
+          <div class="summary-item-label">Pendentes</div>
+          <div class="summary-item-value" id="atPendentes">0</div>
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+        <div class="table-toolbar">
+          <div class="table-title">Atendimentos</div>
+          <div class="table-actions">
+            <div class="search-input-wrapper">
+              <span class="search-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+              <input class="search-input" id="atSearch" placeholder="Buscar paciente..." oninput="renderAt()" />
+            </div>
+            <select class="filter-select" id="atFiltAtendente" onchange="renderAt()">
+              <option value="">Todos atendentes</option>
+              <option>Adriana</option><option>Kaleb</option><option>Cida</option>
+            </select>
+            <select class="filter-select" id="atFiltSituacao" onchange="renderAt()">
+              <option value="">Todas situações</option>
+              <option value="pago">Pago</option>
+              <option value="parcial">Parcial</option>
+              <option value="pendente">Pendente</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Paciente</th>
+                <th>Exame/Serviço</th>
+                <th>Atendente</th>
+                <th>Data</th>
+                <th>Convênio</th>
+                <th>Valor Total</th>
+                <th>Pago</th>
+                <th>Em Aberto</th>
+                <th>Forma</th>
+                <th>Entrega</th>
+                <th>Status</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyAt"></tbody>
+          </table>
+        </div>
+        <div class="table-footer">
+          <span id="atCount"></span>
+          <div id="atPag"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Modal Atendimento -->
+<div class="modal-overlay" id="modalAt">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div class="modal-title" id="modalAtTitle">Novo Atendimento</div>
+      <button class="modal-close" onclick="UTILS.closeModal('modalAt')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="aId" />
+      <div class="form-row mb-4">
+        <div class="form-group" style="flex:2">
+          <label class="form-label">Paciente *</label>
+          <input class="form-input" id="aPaciente" placeholder="Nome do paciente" list="pacientesList" />
+          <datalist id="pacientesList"></datalist>
+          <input type="hidden" id="aPatientId" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data *</label>
+          <input class="form-input" id="aData" type="date" />
+        </div>
+      </div>
+      <div class="form-row mb-4">
+        <div class="form-group" style="flex:2">
+          <label class="form-label">Exame / Serviço *</label>
+          <input class="form-input" id="aExame" placeholder="Nome do exame" list="examesList" />
+          <datalist id="examesList"></datalist>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Convênio</label>
+          <select class="form-select" id="aConvenio">
+            <option>Particular</option><option>Unimed</option><option>SUS</option><option>Bradesco</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row mb-4">
+        <div class="form-group">
+          <label class="form-label">Valor Total (R$)</label>
+          <input class="form-input" id="aValorTotal" type="number" step="0.01" placeholder="0.00" oninput="calcDevedor()" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Desconto (R$)</label>
+          <input class="form-input" id="aDesconto" type="number" step="0.01" placeholder="0.00" oninput="calcDevedor()" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Acréscimo (R$)</label>
+          <input class="form-input" id="aAcrescimo" type="number" step="0.01" placeholder="0.00" oninput="calcDevedor()" />
+        </div>
+      </div>
+      <div class="form-row mb-4">
+        <div class="form-group">
+          <label class="form-label">Valor Pago (R$)</label>
+          <input class="form-input" id="aValorPago" type="number" step="0.01" placeholder="0.00" oninput="calcDevedor()" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Em Aberto (R$)</label>
+          <input class="form-input" id="aDevedor" type="number" step="0.01" placeholder="0.00" readonly style="background:var(--gray-50);color:var(--accent-500);font-weight:700" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Situação</label>
+          <select class="form-select" id="aSituacao">
+            <option value="pago">Pago</option>
+            <option value="parcial">Parcial</option>
+            <option value="pendente">Pendente</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row mb-4">
+        <div class="form-group">
+          <label class="form-label">Forma de Pgto</label>
+          <select class="form-select" id="aForma">
+            <option>Pix</option><option>Dinheiro</option><option>Cartão</option><option>Parcelado</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Parcelas</label>
+          <input class="form-input" id="aParcelas" type="number" min="1" max="12" value="1" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Atendente</label>
+          <select class="form-select" id="aAtendente">
+            <option>Adriana</option><option>Kaleb</option><option>Cida</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row mb-4">
+        <div class="form-group">
+          <label class="form-label">Data Prevista de Entrega</label>
+          <input class="form-input" id="aEntrega" type="date" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Observações</label>
+        <textarea class="form-textarea" id="aObs" placeholder="Observações"></textarea>
+      </div>
+      <div style="background:var(--gray-50);border-radius:8px;border:1px solid var(--gray-200);padding:12px;margin-top:12px">
+        <div class="form-label" style="margin-bottom:8px;color:var(--gray-400)">🔗 Campos PCLAB (futura integração)</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" style="color:var(--gray-400)">Login Paciente Online</label>
+            <input class="form-input" id="aLogin" placeholder="login_paciente" style="background:var(--gray-50);color:var(--gray-400)" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="color:var(--gray-400)">URL QR Code</label>
+            <input class="form-input" id="aQr" placeholder="https://..." style="background:var(--gray-50);color:var(--gray-400)" />
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="UTILS.closeModal('modalAt')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveAt()">Salvar Atendimento</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container"></div>
+
+<script src="js/auth.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/supabase.js"></script>
+<script src="js/data.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/sidebar.js"></script>
+<script>
+  AUTH.requireAuth();
+  SIDEBAR.render('atendimentos.html');
+  let atPage=1;const AT_PER=8;
+
+  function getFiltered(){
+    const q=document.getElementById('atSearch').value.toLowerCase();
+    const at=document.getElementById('atFiltAtendente').value;
+    const sit=document.getElementById('atFiltSituacao').value;
+    let list=DB.Atendimentos.getAll();
+    if(q) list=list.filter(a=>a.nome_paciente.toLowerCase().includes(q)||a.exame.toLowerCase().includes(q));
+    if(at) list=list.filter(a=>a.atendente===at);
+    if(sit) list=list.filter(a=>a.situacao===sit);
+    return list;
+  }
+
+  function renderStats(){
+    const all=DB.Atendimentos.getAll();
+    document.getElementById('atTotal').textContent=all.length;
+    document.getElementById('atPagos').textContent=all.filter(a=>a.situacao==='pago').length;
+    document.getElementById('atParciais').textContent=all.filter(a=>a.situacao==='parcial').length;
+    document.getElementById('atPendentes').textContent=all.filter(a=>a.situacao==='pendente').length;
+  }
+
+  function renderAt(p=1){
+    atPage=p;
+    const list=getFiltered();
+    const{items}=UTILS.paginate(list,p,AT_PER);
+    document.getElementById('atCount').innerHTML=UTILS.rowCountText(items.length,list.length);
+    document.getElementById('tbodyAt').innerHTML=items.length===0
+      ?`<tr><td colspan="13"><div class="empty-state"><p>Nenhum atendimento encontrado.</p></div></td></tr>`
+      :items.map(a=>`<tr>
+        <td><code style="background:var(--gray-100);padding:2px 6px;border-radius:4px;font-size:11px">${a.id}</code></td>
+        <td><strong>${UTILS.esc(a.nome_paciente)}</strong></td>
+        <td class="text-muted">${UTILS.esc(a.exame)}</td>
+        <td>${UTILS.esc(a.atendente)}</td>
+        <td>${UTILS.date(a.data)}</td>
+        <td><span class="badge badge-info">${UTILS.esc(a.convenio)}</span></td>
+        <td style="font-weight:700">${UTILS.currency(a.valor_total)}</td>
+        <td style="color:var(--success-600);font-weight:600">${UTILS.currency(a.valor_pago)}</td>
+        <td style="color:${a.devedor>0?'var(--accent-500)':'var(--gray-400)'};font-weight:600">${UTILS.currency(a.devedor)}</td>
+        <td>${UTILS.paymentBadge(a.forma_pagamento)}</td>
+        <td>${UTILS.date(a.data_entrega)}</td>
+        <td>${UTILS.situacaoBadge(a.situacao)}</td>
+        <td>
+          <div class="flex gap-2">
+            <button class="btn btn-ghost btn-icon btn-sm" onclick="editAt('${a.id}')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button class="btn btn-ghost btn-icon btn-sm" style="color:var(--accent-500)" onclick="deleteAt('${a.id}')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M9 6V4h6v2"/></svg>
+            </button>
+          </div>
+        </td>
+      </tr>`).join('');
+    const pages=Math.ceil(list.length/AT_PER);
+    const pag=document.getElementById('atPag');
+    if(pages<=1){pag.innerHTML='';return;}
+    let b='';for(let i=1;i<=pages;i++) b+=`<button class="page-btn${i===atPage?' active':''}" onclick="renderAt(${i})">${i}</button>`;
+    pag.innerHTML=`<div class="pagination">${b}</div>`;
+  }
+
+  function calcDevedor(){
+    const total=parseFloat(document.getElementById('aValorTotal').value)||0;
+    const pago=parseFloat(document.getElementById('aValorPago').value)||0;
+    const desc=parseFloat(document.getElementById('aDesconto').value)||0;
+    const acr=parseFloat(document.getElementById('aAcrescimo').value)||0;
+    const dev=Math.max(0,(total-desc+acr)-pago);
+    document.getElementById('aDevedor').value=dev.toFixed(2);
+    const sit=document.getElementById('aSituacao');
+    if(dev<=0) sit.value='pago';
+    else if(pago>0) sit.value='parcial';
+    else sit.value='pendente';
+  }
+
+  function openNovoAtend(){
+    document.getElementById('aId').value='';
+    document.getElementById('aPaciente').value='';
+    document.getElementById('aPatientId').value='';
+    document.getElementById('aData').value=UTILS.today();
+    document.getElementById('aExame').value='';
+    document.getElementById('aValorTotal').value='';
+    document.getElementById('aValorPago').value='';
+    document.getElementById('aDesconto').value='';
+    document.getElementById('aAcrescimo').value='';
+    document.getElementById('aDevedor').value='';
+    document.getElementById('aParcelas').value='1';
+    document.getElementById('aObs').value='';
+    document.getElementById('aLogin').value='';
+    document.getElementById('aQr').value='';
+    // Fill datalists
+    const pl=document.getElementById('pacientesList');
+    pl.innerHTML=DB.Pacientes.getAll().map(p=>`<option value="${UTILS.esc(p.nome)}" data-id="${p.id}">`).join('');
+    const el=document.getElementById('examesList');
+    el.innerHTML=DB.Exames.getAll().map(e=>`<option value="${UTILS.esc(e.nome)}">`).join('');
+    document.getElementById('modalAtTitle').textContent='Novo Atendimento';
+    UTILS.openModal('modalAt');
+  }
+
+  function editAt(id){
+    const a=DB.Atendimentos.getById(id);if(!a)return;
+    openNovoAtend();
+    setTimeout(()=>{
+      document.getElementById('aId').value=a.id;
+      document.getElementById('aPaciente').value=a.nome_paciente;
+      document.getElementById('aData').value=a.data;
+      document.getElementById('aExame').value=a.exame;
+      document.getElementById('aConvenio').value=a.convenio||'Particular';
+      document.getElementById('aValorTotal').value=a.valor_total;
+      document.getElementById('aValorPago').value=a.valor_pago;
+      document.getElementById('aDesconto').value=a.desconto;
+      document.getElementById('aAcrescimo').value=a.acrescimo;
+      document.getElementById('aDevedor').value=a.devedor;
+      document.getElementById('aSituacao').value=a.situacao;
+      document.getElementById('aForma').value=a.forma_pagamento||'Pix';
+      document.getElementById('aParcelas').value=a.parcelas||1;
+      document.getElementById('aAtendente').value=a.atendente;
+      document.getElementById('aEntrega').value=a.data_entrega||'';
+      document.getElementById('aObs').value=a.observacoes||'';
+      document.getElementById('modalAtTitle').textContent='Editar Atendimento';
+    },50);
+  }
+
+  async function saveAt(){
+    const nome=document.getElementById('aPaciente').value.trim();
+    const exame=document.getElementById('aExame').value.trim();
+    if(!nome||!exame){UTILS.toast('Paciente e exame são obrigatórios','error');return;}
+    const id=document.getElementById('aId').value;
+    const pac=DB.Pacientes.getAll().find(p=>p.nome===nome);
+    const d={
+      nome_paciente:nome, patient_id:pac?pac.id:'',
+      data:document.getElementById('aData').value || null,
+      exame, convenio:document.getElementById('aConvenio').value,
+      valor_total:parseFloat(document.getElementById('aValorTotal').value)||0,
+      valor_pago:parseFloat(document.getElementById('aValorPago').value)||0,
+      desconto:parseFloat(document.getElementById('aDesconto').value)||0,
+      acrescimo:parseFloat(document.getElementById('aAcrescimo').value)||0,
+      devedor:parseFloat(document.getElementById('aDevedor').value)||0,
+      situacao:document.getElementById('aSituacao').value,
+      forma_pagamento:document.getElementById('aForma').value,
+      parcelas:parseInt(document.getElementById('aParcelas').value)||1,
+      atendente:document.getElementById('aAtendente').value,
+      data_entrega:document.getElementById('aEntrega').value || null,
+      observacoes:document.getElementById('aObs').value || null,
+      login_paciente:document.getElementById('aLogin').value || null,
+      qr_code_url:document.getElementById('aQr').value || null
+    };
+    if(id) await DB.Atendimentos.update(id,d);
+    else { const r = await DB.Atendimentos.add(d); if(!r) return;
+      if(d.valor_pago>0) await DB.Caixa.add({
+        data:d.data,tipo:'entrada',patient_id:d.patient_id,
+        paciente:d.nome_paciente,servico:d.exame,
+        valor:d.valor_pago,forma:d.forma_pagamento,
+        parcelas:d.parcelas,atendente:d.atendente,obs:''
+      });
+    }
+    UTILS.toast(id?'Atendimento atualizado!':'Atendimento registrado!');
+    UTILS.closeModal('modalAt');
+    renderStats(); renderAt();
+  }
+
+  async function deleteAt(id){
+    if(!UTILS.confirm('Excluir este atendimento?'))return;
+    await DB.Atendimentos.remove(id);
+    UTILS.toast('Atendimento excluído','warning');
+    renderStats(); renderAt();
+  }
+
+  DB.init().then(() => {
+    renderStats();
+    renderAt();
+  });
+</script>
+</body>
+</html>

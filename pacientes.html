@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pacientes — Bio Análise</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebar-mount"></div>
+  <div class="main-content">
+
+    <header class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="topbar-title">Pacientes</div>
+          <div class="topbar-breadcrumb">Cadastro e histórico de pacientes</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-primary" onclick="UTILS.openModal('modalPaciente')" id="btnNovoPaciente">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Novo Paciente
+        </button>
+      </div>
+    </header>
+
+    <main class="page-content">
+
+      <!-- Stats row -->
+      <div class="summary-row mb-6">
+        <div class="summary-item blue">
+          <div class="summary-item-label">Total Cadastrados</div>
+          <div class="summary-item-value" id="statTotal">0</div>
+        </div>
+        <div class="summary-item green">
+          <div class="summary-item-label">Ativos</div>
+          <div class="summary-item-value" id="statAtivos">0</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-item-label">Inativos</div>
+          <div class="summary-item-value" id="statInativos">0</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-item-label">Atendidos Hoje</div>
+          <div class="summary-item-value" id="statHoje">0</div>
+        </div>
+      </div>
+
+      <!-- Table -->
+      <div class="table-wrapper">
+        <div class="table-toolbar">
+          <div class="table-title">Lista de Pacientes</div>
+          <div class="table-actions">
+            <div class="search-input-wrapper">
+              <span class="search-icon">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              </span>
+              <input class="search-input" id="searchPaciente" placeholder="Buscar por nome, telefone ou ID..." oninput="renderTable()" />
+            </div>
+            <select class="filter-select" id="filterStatus" onchange="renderTable()">
+              <option value="">Todos</option>
+              <option value="ativo">Ativos</option>
+              <option value="inativo">Inativos</option>
+            </select>
+            <select class="filter-select" id="filterConvenio" onchange="renderTable()">
+              <option value="">Todos convênios</option>
+              <option value="Particular">Particular</option>
+              <option value="Unimed">Unimed</option>
+              <option value="SUS">SUS</option>
+              <option value="Bradesco">Bradesco</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Nome</th>
+                <th>Sexo</th>
+                <th>Nascimento</th>
+                <th>Telefone</th>
+                <th>Convênio</th>
+                <th>Último Atend.</th>
+                <th>Status</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyPacientes"></tbody>
+          </table>
+        </div>
+
+        <div class="table-footer">
+          <span id="pacientesCount"></span>
+          <div id="pacientesPagination"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Modal Novo/Editar Paciente -->
+<div class="modal-overlay" id="modalPaciente">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modalPacienteTitle">Novo Paciente</div>
+      <button class="modal-close" onclick="UTILS.closeModal('modalPaciente')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="pId" />
+      <div class="form-row mb-4">
+        <div class="form-group" style="flex:2">
+          <label class="form-label">Nome Completo *</label>
+          <input class="form-input" id="pNome" placeholder="Nome do paciente" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Sexo</label>
+          <select class="form-select" id="pSexo">
+            <option value="M">Masculino</option>
+            <option value="F">Feminino</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row mb-4">
+        <div class="form-group">
+          <label class="form-label">Data de Nascimento</label>
+          <input class="form-input" id="pNasc" type="date" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Telefone</label>
+          <input class="form-input" id="pTel" placeholder="(64) 99999-9999" />
+        </div>
+      </div>
+      <div class="form-row mb-4">
+        <div class="form-group">
+          <label class="form-label">Convênio</label>
+          <select class="form-select" id="pConvenio">
+            <option>Particular</option>
+            <option>Unimed</option>
+            <option>SUS</option>
+            <option>Bradesco</option>
+            <option>Outro</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <select class="form-select" id="pStatus">
+            <option value="ativo">Ativo</option>
+            <option value="inativo">Inativo</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Observações</label>
+        <textarea class="form-textarea" id="pObs" placeholder="Observações clínicas, alergias, etc."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="UTILS.closeModal('modalPaciente')">Cancelar</button>
+      <button class="btn btn-primary" onclick="savePaciente()">Salvar Paciente</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Histórico Paciente -->
+<div class="modal-overlay" id="modalHistorico">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div class="modal-title" id="modalHistoricoTitle">Histórico do Paciente</div>
+      <button class="modal-close" onclick="UTILS.closeModal('modalHistorico')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="modalHistoricoBody"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="UTILS.closeModal('modalHistorico')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="js/auth.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/supabase.js"></script>
+<script src="js/data.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/sidebar.js"></script>
+<script>
+  AUTH.requireAuth();
+  SIDEBAR.render('pacientes.html');
+
+  let currentPage = 1;
+  const PER_PAGE = 8;
+
+  function getFiltered() {
+    const q   = document.getElementById('searchPaciente').value.trim();
+    const st  = document.getElementById('filterStatus').value;
+    const cv  = document.getElementById('filterConvenio').value;
+    let list  = q ? DB.Pacientes.search(q) : DB.Pacientes.getAll();
+    if (st) list = list.filter(p => p.status === st);
+    if (cv) list = list.filter(p => p.convenio === cv);
+    return list;
+  }
+
+  function renderStats() {
+    const all  = DB.Pacientes.getAll();
+    const at   = DB.Atendimentos.getAll().filter(a => a.data === UTILS.today());
+    const pIds = [...new Set(at.map(a => a.patient_id))];
+    document.getElementById('statTotal').textContent   = all.length;
+    document.getElementById('statAtivos').textContent  = all.filter(p => p.status==='ativo').length;
+    document.getElementById('statInativos').textContent= all.filter(p => p.status==='inativo').length;
+    document.getElementById('statHoje').textContent    = pIds.length;
+  }
+
+  function renderTable() {
+    currentPage = 1;
+    render();
+  }
+
+  function render(page = currentPage) {
+    currentPage = page;
+    const all     = getFiltered();
+    const { items } = UTILS.paginate(all, page, PER_PAGE);
+    document.getElementById('pacientesCount').innerHTML = UTILS.rowCountText(items.length, all.length);
+
+    document.getElementById('tbodyPacientes').innerHTML = items.length === 0
+      ? `<tr><td colspan="9"><div class="empty-state"><p>Nenhum paciente encontrado.</p></div></td></tr>`
+      : items.map(p => `
+        <tr>
+          <td><code style="background:var(--gray-100);padding:2px 6px;border-radius:4px;font-size:11px">${UTILS.esc(p.id)}</code></td>
+          <td><strong>${UTILS.esc(p.nome)}</strong></td>
+          <td>${p.sexo === 'M' ? '♂ Masc.' : '♀ Fem.'}</td>
+          <td>${UTILS.date(p.nascimento)} <span class="text-muted">(${UTILS.age(p.nascimento)})</span></td>
+          <td>${UTILS.esc(p.telefone||'—')}</td>
+          <td><span class="badge badge-info">${UTILS.esc(p.convenio)}</span></td>
+          <td>${UTILS.date(p.ultimo_atendimento)}</td>
+          <td>${UTILS.statusBadge(p.status)}</td>
+          <td>
+            <div class="flex gap-2">
+              <button class="btn btn-ghost btn-icon btn-sm" title="Histórico" onclick="verHistorico('${p.id}')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+              <button class="btn btn-ghost btn-icon btn-sm" title="Editar" onclick="editPaciente('${p.id}')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+              <button class="btn btn-ghost btn-icon btn-sm" title="Excluir" style="color:var(--accent-500)" onclick="deletePaciente('${p.id}')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+              </button>
+            </div>
+          </td>
+        </tr>`).join('');
+
+    // Pagination
+    const pages = Math.ceil(all.length / PER_PAGE);
+    const pag   = document.getElementById('pacientesPagination');
+    if (pages <= 1) { pag.innerHTML=''; return; }
+    let btns = '';
+    for (let i=1;i<=pages;i++) btns += `<button class="page-btn${i===page?' active':''}" onclick="render(${i})">${i}</button>`;
+    pag.innerHTML = `<div class="pagination">${btns}</div>`;
+  }
+
+  async function savePaciente() {
+    const id    = document.getElementById('pId').value;
+    const nome  = document.getElementById('pNome').value.trim();
+    if (!nome) { UTILS.toast('Nome é obrigatório','error'); return; }
+    const data  = {
+      nome, sexo: document.getElementById('pSexo').value,
+      nascimento: document.getElementById('pNasc').value || null,
+      telefone:   document.getElementById('pTel').value   || null,
+      convenio:   document.getElementById('pConvenio').value,
+      status:     document.getElementById('pStatus').value,
+      observacoes:document.getElementById('pObs').value   || null,
+      ultimo_atendimento: null
+    };
+    if (id) { await DB.Pacientes.update(id, data); UTILS.toast('Paciente atualizado!'); }
+    else    { const r = await DB.Pacientes.add(data); if (!r) return; UTILS.toast('Paciente cadastrado!'); }
+    UTILS.closeModal('modalPaciente');
+    clearForm();
+    renderStats();
+    render();
+  }
+
+  function editPaciente(id) {
+    const p = DB.Pacientes.getById(id);
+    if (!p) return;
+    document.getElementById('pId').value     = p.id;
+    document.getElementById('pNome').value   = p.nome;
+    document.getElementById('pSexo').value   = p.sexo;
+    document.getElementById('pNasc').value   = p.nascimento||'';
+    document.getElementById('pTel').value    = p.telefone||'';
+    document.getElementById('pConvenio').value = p.convenio||'Particular';
+    document.getElementById('pStatus').value = p.status||'ativo';
+    document.getElementById('pObs').value    = p.observacoes||'';
+    document.getElementById('modalPacienteTitle').textContent = 'Editar Paciente';
+    UTILS.openModal('modalPaciente');
+  }
+
+  async function deletePaciente(id) {
+    if (!UTILS.confirm('Deseja excluir este paciente? Esta ação não pode ser desfeita.')) return;
+    await DB.Pacientes.remove(id);
+    UTILS.toast('Paciente excluído','warning');
+    renderStats(); render();
+  }
+
+  function verHistorico(id) {
+    const p   = DB.Pacientes.getById(id);
+    const ats = DB.Atendimentos.getByPatient(id);
+    document.getElementById('modalHistoricoTitle').textContent = 'Histórico — ' + p.nome;
+    const rows = ats.length === 0
+      ? '<p class="text-muted" style="text-align:center;padding:20px">Nenhum atendimento registrado.</p>'
+      : `<div class="table-scroll"><table>
+          <thead><tr><th>ID</th><th>Data</th><th>Exame</th><th>Atendente</th><th>Valor</th><th>Status</th></tr></thead>
+          <tbody>${ats.map(a=>`<tr>
+            <td><code style="font-size:11px;background:var(--gray-100);padding:2px 6px;border-radius:4px">${a.id}</code></td>
+            <td>${UTILS.date(a.data)}</td>
+            <td>${UTILS.esc(a.exame)}</td>
+            <td>${UTILS.esc(a.atendente)}</td>
+            <td style="font-weight:700">${UTILS.currency(a.valor_total)}</td>
+            <td>${UTILS.situacaoBadge(a.situacao)}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>`;
+    const info = `<div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:16px;padding:14px;background:var(--gray-50);border-radius:8px;border:1px solid var(--gray-200)">
+      <div><div class="form-label">ID</div><div style="font-weight:600;font-size:13px">${p.id}</div></div>
+      <div><div class="form-label">Sexo</div><div style="font-weight:600;font-size:13px">${p.sexo==='M'?'Masculino':'Feminino'}</div></div>
+      <div><div class="form-label">Nascimento</div><div style="font-weight:600;font-size:13px">${UTILS.date(p.nascimento)} (${UTILS.age(p.nascimento)})</div></div>
+      <div><div class="form-label">Telefone</div><div style="font-weight:600;font-size:13px">${p.telefone||'—'}</div></div>
+      <div><div class="form-label">Convênio</div><div style="font-weight:600;font-size:13px">${p.convenio}</div></div>
+      ${p.observacoes?`<div style="flex:1;min-width:180px"><div class="form-label">Obs.</div><div style="font-size:13px">${UTILS.esc(p.observacoes)}</div></div>`:''}
+    </div>`;
+    document.getElementById('modalHistoricoBody').innerHTML = info + `<div class="card-title mb-4" style="font-size:14px">Atendimentos (${ats.length})</div>` + rows;
+    UTILS.openModal('modalHistorico');
+  }
+
+  function clearForm() {
+    ['pId','pNome','pNasc','pTel','pObs'].forEach(id => document.getElementById(id).value='');
+    document.getElementById('pSexo').value = 'M';
+    document.getElementById('pConvenio').value = 'Particular';
+    document.getElementById('pStatus').value = 'ativo';
+    document.getElementById('modalPacienteTitle').textContent = 'Novo Paciente';
+  }
+
+  DB.init().then(() => {
+    renderStats();
+    render();
+  });
+</script>
+</body>
+</html>

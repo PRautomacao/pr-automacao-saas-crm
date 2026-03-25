@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Funcionários — Bio Análise</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebar-mount"></div>
+  <div class="main-content">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="topbar-title">Funcionários</div>
+          <div class="topbar-breadcrumb">Gestão de colaboradores e acessos</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-primary" onclick="openNovoFunc()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Novo Funcionário
+        </button>
+      </div>
+    </header>
+
+    <main class="page-content">
+
+      <!-- Info card about future features -->
+      <div class="card mb-6" style="border-left:4px solid var(--primary-400)">
+        <div class="card-body" style="display:flex;align-items:center;gap:12px">
+          <span style="font-size:22px">🔮</span>
+          <div>
+            <div style="font-weight:700;font-size:14px;color:var(--primary-700)">Funcionalidades futuras preparadas</div>
+            <div class="text-muted text-sm">Esta área está estruturada para futuramente incluir controle de horários, gestão de pagamentos de funcionários e métricas de desempenho.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+        <div class="table-toolbar">
+          <div class="table-title">Equipe Bio Análise</div>
+          <div class="table-actions">
+            <select class="filter-select" id="funcFiltStatus" onchange="renderFunc()">
+              <option value="">Todos</option><option value="ativo">Ativos</option><option value="inativo">Inativos</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Nome</th>
+                <th>Cargo</th>
+                <th>Login</th>
+                <th>Permissão</th>
+                <th>Data Admissão</th>
+                <th>Status</th>
+                <th>Observações</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyFunc"></tbody>
+          </table>
+        </div>
+        <div class="table-footer">
+          <span id="funcCount"></span>
+        </div>
+      </div>
+
+      <!-- Future Features Section -->
+      <div class="grid-3 mt-4">
+        <div class="card" style="opacity:0.5">
+          <div class="card-body" style="text-align:center;padding:24px">
+            <div style="font-size:28px;margin-bottom:8px">🕐</div>
+            <div style="font-weight:700;font-size:14px;margin-bottom:4px">Controle de Horário</div>
+            <div class="text-muted text-sm">Em breve</div>
+          </div>
+        </div>
+        <div class="card" style="opacity:0.5">
+          <div class="card-body" style="text-align:center;padding:24px">
+            <div style="font-size:28px;margin-bottom:8px">💰</div>
+            <div style="font-weight:700;font-size:14px;margin-bottom:4px">Pagamentos</div>
+            <div class="text-muted text-sm">Em breve</div>
+          </div>
+        </div>
+        <div class="card" style="opacity:0.5">
+          <div class="card-body" style="text-align:center;padding:24px">
+            <div style="font-size:28px;margin-bottom:8px">📊</div>
+            <div style="font-weight:700;font-size:14px;margin-bottom:4px">Métricas</div>
+            <div class="text-muted text-sm">Em breve</div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Modal Funcionário -->
+<div class="modal-overlay" id="modalFunc">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modalFuncTitle">Novo Funcionário</div>
+      <button class="modal-close" onclick="UTILS.closeModal('modalFunc')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="fId" />
+      <div class="form-row mb-4">
+        <div class="form-group" style="flex:2">
+          <label class="form-label">Nome *</label>
+          <input class="form-input" id="fNome" placeholder="Nome completo" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Cargo</label>
+          <input class="form-input" id="fCargo" placeholder="Cargo" />
+        </div>
+      </div>
+      <div class="form-row mb-4">
+        <div class="form-group">
+          <label class="form-label">Login</label>
+          <input class="form-input" id="fLogin" placeholder="usuario" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Permissão</label>
+          <select class="form-select" id="fPermissao">
+            <option value="atendente">Atendente</option>
+            <option value="admin">Administrador</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <select class="form-select" id="fStatus">
+            <option value="ativo">Ativo</option><option value="inativo">Inativo</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row mb-4">
+        <div class="form-group">
+          <label class="form-label">Data de Admissão</label>
+          <input class="form-input" id="fAdmissao" type="date" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Observações</label>
+        <textarea class="form-textarea" id="fObs" placeholder="Observações internas"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="UTILS.closeModal('modalFunc')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveFunc()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container"></div>
+
+<script src="js/auth.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/supabase.js"></script>
+<script src="js/data.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/sidebar.js"></script>
+<script>
+  AUTH.requireAuth(true);
+  SIDEBAR.render('funcionarios.html');
+
+  // rank map
+  function rank(f){ const r=DB.Analytics.atendimentosByAtendente(); const x=r.find(a=>a.nome===f.nome); return x?x.count:0; }
+
+  function renderFunc(){
+    const st=document.getElementById('funcFiltStatus').value;
+    let list=DB.Funcionarios.getAll();
+    if(st) list=list.filter(f=>f.status===st);
+    document.getElementById('funcCount').innerHTML=UTILS.rowCountText(list.length,DB.Funcionarios.getAll().length);
+    document.getElementById('tbodyFunc').innerHTML=list.length===0
+      ?`<tr><td colspan="9"><div class="empty-state"><p>Nenhum funcionário encontrado.</p></div></td></tr>`
+      :list.map(f=>`<tr>
+        <td><code style="background:var(--gray-100);padding:2px 6px;border-radius:4px;font-size:11px">${f.id}</code></td>
+        <td>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:32px;height:32px;border-radius:50%;background:var(--primary-100);color:var(--primary-700);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${f.nome.substring(0,2).toUpperCase()}</div>
+            <strong>${UTILS.esc(f.nome)}</strong>
+          </div>
+        </td>
+        <td class="text-muted">${UTILS.esc(f.cargo)}</td>
+        <td><code style="font-size:12px">${UTILS.esc(f.login)}</code></td>
+        <td>${f.permissao==='admin'?'<span class="badge badge-danger">Admin</span>':'<span class="badge badge-info">Atendente</span>'}</td>
+        <td>${UTILS.date(f.data_admissao)}</td>
+        <td>${UTILS.statusBadge(f.status)}</td>
+        <td class="text-muted" style="font-size:12px">${UTILS.esc(f.observacoes||'—')}</td>
+        <td>
+          <div class="flex gap-2">
+            <button class="btn btn-ghost btn-icon btn-sm" onclick="editFunc('${f.id}')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button class="btn btn-ghost btn-icon btn-sm" style="color:var(--accent-500)" onclick="deleteFunc('${f.id}')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M9 6V4h6v2"/></svg>
+            </button>
+          </div>
+        </td>
+      </tr>`).join('');
+  }
+
+  function openNovoFunc(){
+    ['fId','fNome','fCargo','fLogin','fObs'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('fPermissao').value='atendente';
+    document.getElementById('fStatus').value='ativo';
+    document.getElementById('fAdmissao').value='';
+    document.getElementById('modalFuncTitle').textContent='Novo Funcionário';
+    UTILS.openModal('modalFunc');
+  }
+
+  function editFunc(id){
+    const f=DB.Funcionarios.getById(id);if(!f)return;
+    document.getElementById('fId').value=f.id;
+    document.getElementById('fNome').value=f.nome;
+    document.getElementById('fCargo').value=f.cargo||'';
+    document.getElementById('fLogin').value=f.login||'';
+    document.getElementById('fPermissao').value=f.permissao||'atendente';
+    document.getElementById('fStatus').value=f.status||'ativo';
+    document.getElementById('fAdmissao').value=f.data_admissao||'';
+    document.getElementById('fObs').value=f.observacoes||'';
+    document.getElementById('modalFuncTitle').textContent='Editar Funcionário';
+    UTILS.openModal('modalFunc');
+  }
+
+  async function saveFunc(){
+    const nome=document.getElementById('fNome').value.trim();
+    if(!nome){UTILS.toast('Nome é obrigatório','error');return;}
+    const id=document.getElementById('fId').value;
+    const d={nome,cargo:document.getElementById('fCargo').value || null,login:document.getElementById('fLogin').value || null,permissao:document.getElementById('fPermissao').value,status:document.getElementById('fStatus').value,data_admissao:document.getElementById('fAdmissao').value || null,observacoes:document.getElementById('fObs').value || null};
+    if(id) await DB.Funcionarios.update(id,d);
+    else { const r = await DB.Funcionarios.add(d); if(!r) return; }
+    UTILS.toast(id?'Funcionário atualizado!':'Funcionário cadastrado!');
+    UTILS.closeModal('modalFunc');renderFunc();
+  }
+
+  async function deleteFunc(id){
+    if(!UTILS.confirm('Excluir este funcionário?'))return;
+    await DB.Funcionarios.remove(id);
+    UTILS.toast('Funcionário excluído','warning');renderFunc();
+  }
+
+  DB.init().then(() => {
+    renderFunc();
+  });
+</script>
+</body>
+</html>

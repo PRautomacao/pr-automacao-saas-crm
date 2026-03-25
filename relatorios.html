@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Relatórios — Bio Análise</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebar-mount"></div>
+  <div class="main-content">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="topbar-title">Relatórios</div>
+          <div class="topbar-breadcrumb">Análises e indicadores gerenciais</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <select class="filter-select" id="relPeriodo" onchange="refreshAll()">
+          <option value="7">Últimos 7 dias</option>
+          <option value="15">Últimos 15 dias</option>
+          <option value="30" selected>Últimos 30 dias</option>
+          <option value="90">Últimos 90 dias</option>
+        </select>
+      </div>
+    </header>
+
+    <main class="page-content">
+
+      <!-- KPI summary -->
+      <div class="kpi-grid mb-6" id="relKpis"></div>
+
+      <!-- Charts -->
+      <div class="charts-grid mb-6">
+        <div class="chart-card">
+          <div class="chart-card-header">
+            <div>
+              <div class="chart-card-title">Receita por Dia</div>
+              <div class="chart-card-sub" id="relChartLabel">Período selecionado</div>
+            </div>
+          </div>
+          <div class="chart-container">
+            <canvas id="relChartRevenue"></canvas>
+          </div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-card-header">
+            <div>
+              <div class="chart-card-title">Pagamentos por Forma</div>
+              <div class="chart-card-sub">Distribuição percentual</div>
+            </div>
+          </div>
+          <div class="chart-container">
+            <canvas id="relChartPayment"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Atendente Report Table -->
+      <div class="grid-2 mb-6">
+        <div class="table-wrapper">
+          <div class="table-toolbar">
+            <div class="table-title">Relatório por Atendente</div>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>Atendente</th><th>Atendimentos</th><th>Receita</th><th>Ticket Médio</th></tr></thead>
+              <tbody id="relAtendentes"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="table-wrapper">
+          <div class="table-toolbar">
+            <div class="table-title">Exames Mais Realizados</div>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>Exame</th><th>Qtde</th><th>Receita</th></tr></thead>
+              <tbody id="relExames"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Last patients -->
+      <div class="table-wrapper">
+        <div class="table-toolbar">
+          <div class="table-title">Pacientes Cadastrados Recentemente</div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>ID</th><th>Nome</th><th>Convênio</th><th>Último Atendimento</th><th>Status</th></tr></thead>
+            <tbody id="relPacientes"></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div class="toast-container"></div>
+
+<script src="js/auth.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/supabase.js"></script>
+<script src="js/data.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/sidebar.js"></script>
+<script>
+  AUTH.requireAuth(true);
+  SIDEBAR.render('relatorios.html');
+
+  let revChart=null, payChart=null;
+
+  function getDays(){ return parseInt(document.getElementById('relPeriodo').value)||30; }
+
+  function refreshAll(){
+    renderKpis(); renderCharts(); renderAtendentes(); renderExames(); renderPacientes();
+  }
+
+  function renderKpis(){
+    const days=getDays();
+    const cut=new Date('2026-03-24'); cut.setDate(cut.getDate()-days);
+    const cutStr=cut.toISOString().slice(0,10);
+    const caixa=DB.Caixa.getAll().filter(c=>c.data>=cutStr);
+    const ats  =DB.Atendimentos.getAll().filter(a=>a.data>=cutStr);
+    const ents =caixa.filter(c=>c.tipo==='entrada').reduce((s,c)=>s+c.valor,0);
+    const saids=caixa.filter(c=>c.tipo==='saida').reduce((s,c)=>s+c.valor,0);
+    const aberto=ats.reduce((s,a)=>s+(a.devedor||0),0);
+    const pacs =DB.Pacientes.getAll().length;
+    document.getElementById('relKpis').innerHTML=[
+      {label:'Receita no Período',value:UTILS.currency(ents),cls:'success'},
+      {label:'Saídas no Período',value:UTILS.currency(saids),cls:'danger'},
+      {label:'Saldo',value:UTILS.currency(ents-saids),cls:'info'},
+      {label:'Atendimentos',value:ats.length,cls:'info'},
+      {label:'Valores em Aberto',value:UTILS.currency(aberto),cls:'warning'},
+      {label:'Pacientes Cadastrados',value:pacs,cls:'info'}
+    ].map(c=>`
+      <div class="kpi-card kpi-${c.cls}">
+        <div class="kpi-top"><div class="kpi-label">${c.label}</div></div>
+        <div class="kpi-value">${c.value}</div>
+      </div>`).join('');
+  }
+
+  function renderCharts(){
+    const days=getDays();
+    const revData=DB.Analytics.revenueByDay(Math.min(days,14));
+    document.getElementById('relChartLabel').textContent=`Últimos ${Math.min(days,14)} dias`;
+    if(revChart) revChart.destroy();
+    revChart=new Chart(document.getElementById('relChartRevenue').getContext('2d'),{
+      type:'line',
+      plugins:[ChartDataLabels],
+      data:{labels:revData.map(d=>d.label),datasets:[{label:'Receita',data:revData.map(d=>d.value),borderColor:'#1a4fa0',backgroundColor:'rgba(26,79,160,0.08)',borderWidth:2.5,fill:true,tension:0.4,pointRadius:5,pointBackgroundColor:'#1a4fa0',pointHoverRadius:7}]},
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{
+          legend:{display:false},
+          tooltip:{callbacks:{label:c=>'R$ '+c.parsed.y.toFixed(2)}},
+          datalabels:{
+            anchor:'top', align:'top',
+            formatter: v => v > 0 ? 'R$'+v.toFixed(0) : '',
+            font:{size:11,weight:'700'},
+            color:'#1a4fa0',
+            backgroundColor:'rgba(255,255,255,0.8)',
+            borderRadius:4,
+            padding:{top:2,bottom:2,left:4,right:4},
+            display: ctx => ctx.dataset.data[ctx.dataIndex] > 0
+          }
+        },
+        scales:{y:{grid:{color:'rgba(0,0,0,0.05)'},ticks:{callback:v=>'R$'+v,font:{size:11}}},x:{grid:{display:false},ticks:{font:{size:11}}}}
+      }
+    });
+    const payData=DB.Analytics.revenueByPayment();
+    const payTotal=payData.reduce((s,d)=>s+d.value,0);
+    if(payChart) payChart.destroy();
+    payChart=new Chart(document.getElementById('relChartPayment').getContext('2d'),{
+      type:'doughnut',
+      plugins:[ChartDataLabels],
+      data:{labels:payData.map(d=>d.label),datasets:[{data:payData.map(d=>d.value),backgroundColor:['#1a4fa0','#22c55e','#f59e0b','#c8232c','#8b5cf6'],borderWidth:2,borderColor:'#fff',hoverOffset:8}]},
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        cutout:'62%',
+        plugins:{
+          legend:{position:'bottom',labels:{padding:14,font:{size:12}}},
+          tooltip:{callbacks:{label:c=>c.label+': R$ '+c.raw.toFixed(2)}},
+          datalabels:{
+            formatter:(v,ctx)=>{
+              const pct=payTotal>0?((v/payTotal)*100).toFixed(1):0;
+              return pct+'%';
+            },
+            color:'#fff',
+            font:{size:12,weight:'700'},
+            textShadowBlur:4,
+            textShadowColor:'rgba(0,0,0,0.35)',
+            display:ctx=>{
+              const v=ctx.dataset.data[ctx.dataIndex];
+              return payTotal>0&&(v/payTotal)>0.06;
+            }
+          }
+        }
+      }
+    });
+  }
+
+  function renderAtendentes(){
+    const days=getDays();
+    const cut=new Date('2026-03-24'); cut.setDate(cut.getDate()-days);
+    const cutStr=cut.toISOString().slice(0,10);
+    const ats=DB.Atendimentos.getAll().filter(a=>a.data>=cutStr);
+    const map={};
+    ats.forEach(a=>{
+      if(!map[a.atendente]) map[a.atendente]={count:0,receita:0};
+      map[a.atendente].count++;
+      map[a.atendente].receita+=a.valor_pago||0;
+    });
+    const list=Object.entries(map).sort((a,b)=>b[1].count-a[1].count);
+    document.getElementById('relAtendentes').innerHTML=list.length===0
+      ?`<tr><td colspan="4" class="text-muted" style="text-align:center;padding:20px">Sem dados</td></tr>`
+      :list.map(([nome,d],i)=>`<tr>
+        <td><div style="display:flex;align-items:center;gap:8px">
+          <div style="width:22px;height:22px;border-radius:50%;background:var(--primary-100);color:var(--primary-700);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">${i+1}</div>
+          <strong>${UTILS.esc(nome)}</strong>
+        </div></td>
+        <td>${d.count}</td>
+        <td style="color:var(--success-600);font-weight:700">${UTILS.currency(d.receita)}</td>
+        <td>${UTILS.currency(d.count>0?d.receita/d.count:0)}</td>
+      </tr>`).join('');
+  }
+
+  function renderExames(){
+    const days=getDays();
+    const cut=new Date('2026-03-24'); cut.setDate(cut.getDate()-days);
+    const cutStr=cut.toISOString().slice(0,10);
+    const ats=DB.Atendimentos.getAll().filter(a=>a.data>=cutStr);
+    const map={};
+    ats.forEach(a=>{
+      if(!map[a.exame]) map[a.exame]={count:0,receita:0};
+      map[a.exame].count++;
+      map[a.exame].receita+=a.valor_pago||0;
+    });
+    const list=Object.entries(map).sort((a,b)=>b[1].count-a[1].count).slice(0,8);
+    document.getElementById('relExames').innerHTML=list.length===0
+      ?`<tr><td colspan="3" class="text-muted" style="text-align:center;padding:20px">Sem dados</td></tr>`
+      :list.map(([nome,d])=>`<tr>
+        <td>${UTILS.esc(nome)}</td>
+        <td><strong>${d.count}</strong></td>
+        <td style="color:var(--success-600);font-weight:700">${UTILS.currency(d.receita)}</td>
+      </tr>`).join('');
+  }
+
+  function renderPacientes(){
+    const list=DB.Pacientes.getAll().slice(0,8);
+    document.getElementById('relPacientes').innerHTML=list.map(p=>`<tr>
+      <td><code style="background:var(--gray-100);padding:2px 6px;border-radius:4px;font-size:11px">${p.id}</code></td>
+      <td><strong>${UTILS.esc(p.nome)}</strong></td>
+      <td><span class="badge badge-info">${UTILS.esc(p.convenio)}</span></td>
+      <td>${UTILS.date(p.ultimo_atendimento)}</td>
+      <td>${UTILS.statusBadge(p.status)}</td>
+    </tr>`).join('');
+  }
+
+  DB.init().then(() => {
+    refreshAll();
+  });
+</script>
+</body>
+</html>

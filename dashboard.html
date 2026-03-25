@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — Bio Análise</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+  <style>
+    .ranking-row { display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--gray-100); }
+    .ranking-row:last-child { border-bottom:none; }
+    .ranking-pos { width:24px; height:24px; border-radius:50%; background:var(--primary-100); color:var(--primary-700); font-size:11px; font-weight:800; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .ranking-pos.gold { background:#fef3c7; color:#b45309; }
+    .ranking-bar-wrap { flex:1; }
+    .ranking-name { font-size:13px; font-weight:600; color:var(--gray-800); margin-bottom:4px; }
+    .ranking-bar-outer { height:6px; background:var(--gray-100); border-radius:99px; overflow:hidden; }
+    .ranking-bar-inner { height:100%; border-radius:99px; background: linear-gradient(90deg, var(--primary-600), var(--primary-400)); transition:width 1s ease; }
+    .ranking-count { font-size:13px; font-weight:700; color:var(--primary-600); flex-shrink:0; }
+  </style>
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebar-mount"></div>
+
+  <div class="main-content">
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="topbar-title">Dashboard</div>
+          <div class="topbar-breadcrumb" id="topbar-date"></div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <span class="topbar-date" id="topbar-clock"></span>
+        <div class="topbar-icon-btn" title="Notificações">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        </div>
+      </div>
+    </header>
+
+    <main class="page-content">
+
+      <!-- KPI Cards -->
+      <div class="kpi-grid" id="kpiGrid"></div>
+
+      <!-- Charts Row -->
+      <div class="charts-grid mb-6">
+        <div class="chart-card">
+          <div class="chart-card-header">
+            <div>
+              <div class="chart-card-title">Receita — Últimos 7 Dias</div>
+              <div class="chart-card-sub">Entradas no fluxo de caixa</div>
+            </div>
+            <span class="badge badge-info">Esta semana</span>
+          </div>
+          <div class="chart-container">
+            <canvas id="chartRevenue"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-header">
+            <div>
+              <div class="chart-card-title">Formas de Pagamento</div>
+              <div class="chart-card-sub">Distribuição por tipo</div>
+            </div>
+          </div>
+          <div class="chart-container">
+            <canvas id="chartPayment"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Row -->
+      <div class="grid-2 mb-6">
+        <!-- Latest Transactions -->
+        <div class="table-wrapper">
+          <div class="table-toolbar">
+            <div class="table-title">Últimas Movimentações</div>
+            <a href="caixa.html" class="btn btn-secondary btn-sm">Ver todas</a>
+          </div>
+          <div class="table-scroll">
+            <table id="tableMovimentos">
+              <thead>
+                <tr>
+                  <th>Paciente</th>
+                  <th>Serviço</th>
+                  <th>Forma</th>
+                  <th>Valor</th>
+                  <th>Tipo</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyMovimentos"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Ranking -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Ranking de Atendentes</div>
+              <div class="card-subtitle">Por quantidade de atendimentos</div>
+            </div>
+          </div>
+          <div class="card-body">
+            <div id="rankingList"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Patients -->
+      <div class="table-wrapper">
+        <div class="table-toolbar">
+          <div class="table-title">Atendimentos Recentes</div>
+          <a href="atendimentos.html" class="btn btn-secondary btn-sm">Ver todos</a>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Paciente</th>
+                <th>Exame</th>
+                <th>Atendente</th>
+                <th>Data</th>
+                <th>Valor</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyAtendimentos"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script src="js/auth.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/supabase.js"></script>
+<script src="js/data.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/sidebar.js"></script>
+<script>
+  const session = AUTH.requireAuth();
+  SIDEBAR.render('dashboard.html');
+
+  // Set date
+  document.getElementById('topbar-date').textContent = UTILS.todayFormatted();
+
+  // Clock
+  (function tick() {
+    const now = new Date();
+    document.getElementById('topbar-clock').textContent =
+      now.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+    setTimeout(tick, 60000);
+  })();
+
+  // KPI Cards
+  function renderKPIs() {
+    const totDay  = DB.Caixa.totalsToday();
+    const totMonth= DB.Caixa.totalsMonth();
+    const ats     = DB.Atendimentos.getAll();
+    const today   = UTILS.today();
+    const atsToday= ats.filter(a => a.data === today).length;
+    const pacs    = DB.Pacientes.getAll().length;
+    const aberto  = DB.Analytics.openAmount();
+
+    const cards = [
+      { label:'Recebido Hoje',         value: UTILS.currency(totDay.entradas),  icon:'cash',    type:'success', change:'+' },
+      { label:'Recebido no Mês',        value: UTILS.currency(totMonth.entradas),icon:'calendar', type:'info',   change: '' },
+      { label:'Atendimentos Hoje',      value: atsToday,                         icon:'clip',    type:'info',   change: '' },
+      { label:'Pacientes Cadastrados',  value: pacs,                             icon:'users',   type:'info',   change: '' },
+      { label:'Valores em Aberto',      value: UTILS.currency(aberto),           icon:'alert',   type:'danger', change:'' },
+      { label:'Saldo do Dia',           value: UTILS.currency(totDay.saldo),     icon:'trend',   type: totDay.saldo >= 0 ? 'success':'danger', change:'' }
+    ];
+
+    const icons = {
+      cash:     `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>`,
+      calendar: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
+      clip:     `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>`,
+      users:    `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+      alert:    `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/></svg>`,
+      trend:    `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>`
+    };
+
+    document.getElementById('kpiGrid').innerHTML = cards.map(c => `
+      <div class="kpi-card kpi-${c.type}">
+        <div class="kpi-top">
+          <div class="kpi-label">${c.label}</div>
+          <div class="kpi-icon ${c.type}">${icons[c.icon]}</div>
+        </div>
+        <div class="kpi-value">${c.value}</div>
+        <div class="kpi-footer">
+          <span class="kpi-period">Atualizado agora</span>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // Charts
+  function renderCharts() {
+    // Revenue by day
+    const revData = DB.Analytics.revenueByDay(7);
+    new Chart(document.getElementById('chartRevenue').getContext('2d'), {
+      type: 'bar',
+      plugins: [ChartDataLabels],
+      data: {
+        labels: revData.map(d => d.label),
+        datasets: [{
+          label: 'Receita (R$)',
+          data: revData.map(d => d.value),
+          backgroundColor: 'rgba(26,79,160,0.14)',
+          borderColor: '#1a4fa0',
+          borderWidth: 2,
+          borderRadius: 6,
+          hoverBackgroundColor: 'rgba(26,79,160,0.28)'
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        layout: { padding: { top: 28 } },
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => 'R$ ' + ctx.parsed.y.toFixed(2) } },
+          datalabels: {
+            anchor: 'end',
+            align: 'top',
+            formatter: v => v > 0 ? 'R$' + v.toFixed(0) : '',
+            font: { size: 11, weight: '700' },
+            color: '#1a4fa0',
+            padding: { bottom: 2 }
+          }
+        },
+        scales: {
+          y: { grid: { color:'rgba(0,0,0,0.05)' }, ticks: { callback: v => 'R$' + v, font: { size:11 } } },
+          x: { grid: { display: false }, ticks: { font: { size:11 } } }
+        }
+      }
+    });
+
+    // Payment distribution
+    const payData = DB.Analytics.revenueByPayment();
+    const payTotal = payData.reduce((s, d) => s + d.value, 0);
+    new Chart(document.getElementById('chartPayment').getContext('2d'), {
+      type: 'doughnut',
+      plugins: [ChartDataLabels],
+      data: {
+        labels: payData.map(d => d.label),
+        datasets: [{
+          data: payData.map(d => d.value),
+          backgroundColor: ['#1a4fa0','#22c55e','#f59e0b','#c8232c','#8b5cf6'],
+          borderWidth: 2,
+          borderColor: '#fff',
+          hoverOffset: 8
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        cutout: '62%',
+        plugins: {
+          legend: { position:'bottom', labels: { padding:14, font:{ size:12 } } },
+          tooltip: { callbacks: { label: ctx => ctx.label + ': R$ ' + ctx.raw.toFixed(2) } },
+          datalabels: {
+            formatter: (v, ctx) => {
+              const pct = payTotal > 0 ? ((v / payTotal) * 100).toFixed(1) : 0;
+              return pct + '%';
+            },
+            color: '#fff',
+            font: { size: 12, weight: '700' },
+            textShadowBlur: 4,
+            textShadowColor: 'rgba(0,0,0,0.35)',
+            display: ctx => {
+              const v = ctx.dataset.data[ctx.dataIndex];
+              return payTotal > 0 && (v / payTotal) > 0.06;
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // Last movements
+  function renderMovimentos() {
+    const rows = DB.Caixa.getAll().slice(0,8);
+    document.getElementById('tbodyMovimentos').innerHTML = rows.map(r => `
+      <tr>
+        <td><span style="font-weight:600">${UTILS.esc(r.paciente)||'—'}</span></td>
+        <td class="text-muted">${UTILS.esc(r.servico)}</td>
+        <td>${UTILS.paymentBadge(r.forma)}</td>
+        <td style="font-weight:700;color:${r.tipo==='entrada'?'var(--success-600)':'var(--accent-500)'}">${r.tipo==='entrada'?'+':'−'}${UTILS.currency(r.valor)}</td>
+        <td>${r.tipo==='entrada'?'<span class="badge badge-success">Entrada</span>':'<span class="badge badge-danger">Saída</span>'}</td>
+      </tr>
+    `).join('');
+  }
+
+  // Ranking
+  function renderRanking() {
+    const ranking = DB.Analytics.atendimentosByAtendente();
+    const max = ranking[0]?.count || 1;
+    document.getElementById('rankingList').innerHTML = ranking.map((r,i) => `
+      <div class="ranking-row">
+        <div class="ranking-pos ${i===0?'gold':''}">${i+1}</div>
+        <div class="ranking-bar-wrap">
+          <div class="ranking-name">${UTILS.esc(r.nome)}</div>
+          <div class="ranking-bar-outer">
+            <div class="ranking-bar-inner" style="width:${(r.count/max*100).toFixed(0)}%"></div>
+          </div>
+        </div>
+        <div class="ranking-count">${r.count}</div>
+      </div>
+    `).join('');
+  }
+
+  // Recent attendances
+  function renderAtendimentos() {
+    const rows = DB.Atendimentos.getAll().slice(0,6);
+    document.getElementById('tbodyAtendimentos').innerHTML = rows.map(a => `
+      <tr>
+        <td><code style="background:var(--gray-100);padding:2px 6px;border-radius:4px;font-size:11px">${UTILS.esc(a.id)}</code></td>
+        <td><a href="pacientes.html" style="font-weight:600;color:var(--primary-600)">${UTILS.esc(a.nome_paciente)}</a></td>
+        <td class="text-muted">${UTILS.esc(a.exame)}</td>
+        <td>${UTILS.esc(a.atendente)}</td>
+        <td>${UTILS.date(a.data)}</td>
+        <td style="font-weight:700">${UTILS.currency(a.valor_total)}</td>
+        <td>${UTILS.situacaoBadge(a.situacao)}</td>
+      </tr>
+    `).join('');
+  }
+
+  DB.init().then(() => {
+    renderKPIs();
+    renderCharts();
+    renderMovimentos();
+    renderRanking();
+    renderAtendimentos();
+  });
+</script>
+</body>
+</html>
