@@ -6,8 +6,8 @@
  * -----------------------------------------------------------
  */
 
-const SUPABASE_URL      = 'https://supabase.lab-bioanalise.com';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNjQxNzY5MjAwLCJleHAiOjI1NTA2NzIwMDB9.qkOv0VLoOy8VWOZy3caKd7D_5zYBNE5AfPCz2p9agk0';
+const SUPABASE_URL      = 'https://ooeakzxwqetdrpqlpjcw.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9vZWFrenh3cWV0ZHJwcWxwamN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIwNDQ2NTQsImV4cCI6MjA4NzYyMDY1NH0.G2POYmbFQj7kYEx2iVV_tQMoJXZ5O8Km9RHD_RLwPyM';
 
 // CDN do Supabase JS SDK v2 é carregado via <script> nos HTMLs.
 // Aqui apenas inicializamos o client.
