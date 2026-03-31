@@ -26,9 +26,10 @@ const AUTH = (() => {
     },
     {
       id: 'u3',
-      login: 'kaleb',
+      login: 'kaleby',
+      aliases: ['kaleb'],
       password: 'bio2024',
-      name: 'Kaleb',
+      name: 'Kaleby',
       role: 'atendente',
       initials: 'KA',
       avatar: null
@@ -46,9 +47,24 @@ const AUTH = (() => {
 
   const SESSION_KEY = 'bioanalise_session';
 
+  function normalizeLegacySession(session) {
+    if (!session) return null;
+
+    const normalized = { ...session };
+
+    if (normalized.login === 'kaleb') normalized.login = 'kaleby';
+    if (normalized.name === 'Kaleb') normalized.name = 'Kaleby';
+
+    return normalized;
+  }
+
   function login(loginStr, password, remember) {
+    const loginNormalized = loginStr.toLowerCase();
     const user = USERS.find(u =>
-      u.login.toLowerCase() === loginStr.toLowerCase() &&
+      (
+        u.login.toLowerCase() === loginNormalized ||
+        (u.aliases || []).some(alias => alias.toLowerCase() === loginNormalized)
+      ) &&
       u.password === password
     );
     if (!user) return { success: false, error: 'Usuário ou senha inválidos.' };
@@ -79,8 +95,20 @@ const AUTH = (() => {
   }
 
   function getSession() {
-    const s = localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY);
-    return s ? JSON.parse(s) : null;
+    const localRaw = localStorage.getItem(SESSION_KEY);
+    const sessionRaw = sessionStorage.getItem(SESSION_KEY);
+    const raw = localRaw || sessionRaw;
+
+    if (!raw) return null;
+
+    const session = normalizeLegacySession(JSON.parse(raw));
+    const storage = localRaw ? localStorage : sessionStorage;
+
+    if (raw !== JSON.stringify(session)) {
+      storage.setItem(SESSION_KEY, JSON.stringify(session));
+    }
+
+    return session;
   }
 
   function isLogged() {

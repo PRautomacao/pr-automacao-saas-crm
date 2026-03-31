@@ -16,6 +16,7 @@ const DB = (() => {
   const KEYS = {
     pacientes:    'ba_pacientes',
     atendimentos: 'ba_atendimentos',
+    agendamentos: 'ba_agendamentos',
     caixa:        'ba_caixa',
     exames:       'ba_exames',
     funcionarios: 'ba_funcionarios',
@@ -27,6 +28,7 @@ const DB = (() => {
   const cache = {
     pacientes:    [],
     atendimentos: [],
+    agendamentos: [],
     caixa:        [],
     exames:       [],
     funcionarios: [],
@@ -112,7 +114,7 @@ const DB = (() => {
   const SEED_FUNCIONARIOS = [
     { id: 'F001', nome: 'Dr. Omar',  cargo: 'Médico Responsável', login: 'omar',    permissao: 'admin',     status: 'ativo', data_admissao: '2015-01-10', observacoes: 'Responsável técnico' },
     { id: 'F002', nome: 'Adriana',   cargo: 'Atendente',          login: 'adriana', permissao: 'atendente', status: 'ativo', data_admissao: '2019-03-15', observacoes: '' },
-    { id: 'F003', nome: 'Kaleb',     cargo: 'Atendente',          login: 'kaleb',   permissao: 'atendente', status: 'ativo', data_admissao: '2021-08-01', observacoes: '' },
+    { id: 'F003', nome: 'Kaleby',    cargo: 'Atendente',          login: 'kaleby',  permissao: 'atendente', status: 'ativo', data_admissao: '2021-08-01', observacoes: '' },
     { id: 'F004', nome: 'Cida',      cargo: 'Atendente Sênior',   login: 'cida',    permissao: 'atendente', status: 'ativo', data_admissao: '2017-05-20', observacoes: 'Auxiliar de laboratório' }
   ];
 
@@ -120,29 +122,29 @@ const DB = (() => {
     { id: 'AT231593', patient_id: 'P32912', nome_paciente: 'Paulo Ricardo Nascimento Marti', data: '2026-03-24', atendente: 'Adriana', exame: 'Hemograma Completo',        convenio: 'Particular', valor_total: 25.00, valor_pago: 25.00, desconto: 0, acrescimo: 0, devedor: 0,     forma_pagamento: 'Pix',      parcelas: 1, situacao: 'pago',     data_entrega: '2026-03-31', observacoes: '',                       login_paciente: 'paulo.marti', senha_paciente: '****', qr_code_url: '', created_at: '2026-03-24T09:15:00' },
     { id: 'AT231594', patient_id: 'P33001', nome_paciente: 'Maria Aparecida dos Santos',     data: '2026-03-24', atendente: 'Cida',    exame: 'TSH (Tireotropina)',         convenio: 'Unimed',     valor_total: 45.00, valor_pago: 45.00, desconto: 0, acrescimo: 0, devedor: 0,     forma_pagamento: 'Cartão',   parcelas: 1, situacao: 'pago',     data_entrega: '2026-03-31', observacoes: 'Pedir retorno em 30 dias', login_paciente: '', senha_paciente: '', qr_code_url: '', created_at: '2026-03-24T09:40:00' },
     { id: 'AT231595', patient_id: 'P33145', nome_paciente: 'Fernanda Beatriz Costa',         data: '2026-03-24', atendente: 'Adriana', exame: 'Colesterol Total + Frações', convenio: 'Particular', valor_total: 32.00, valor_pago: 20.00, desconto: 0, acrescimo: 0, devedor: 12.00, forma_pagamento: 'Parcelado', parcelas: 2, situacao: 'parcial',  data_entrega: '2026-03-31', observacoes: '',                       login_paciente: '', senha_paciente: '', qr_code_url: '', created_at: '2026-03-24T10:05:00' },
-    { id: 'AT231596', patient_id: 'P33042', nome_paciente: 'João Carlos Pereira Lima',       data: '2026-03-24', atendente: 'Kaleb',   exame: 'Vitamina D (25-OH)',         convenio: 'Particular', valor_total: 68.00, valor_pago: 68.00, desconto: 5, acrescimo: 0, devedor: 0,     forma_pagamento: 'Dinheiro', parcelas: 1, situacao: 'pago',     data_entrega: '2026-03-31', observacoes: 'Desconto fidelidade',    login_paciente: '', senha_paciente: '', qr_code_url: '', created_at: '2026-03-24T10:30:00' },
+    { id: 'AT231596', patient_id: 'P33042', nome_paciente: 'João Carlos Pereira Lima',       data: '2026-03-24', atendente: 'Kaleby',  exame: 'Vitamina D (25-OH)',         convenio: 'Particular', valor_total: 68.00, valor_pago: 68.00, desconto: 5, acrescimo: 0, devedor: 0,     forma_pagamento: 'Dinheiro', parcelas: 1, situacao: 'pago',     data_entrega: '2026-03-31', observacoes: 'Desconto fidelidade',    login_paciente: '', senha_paciente: '', qr_code_url: '', created_at: '2026-03-24T10:30:00' },
     { id: 'AT231597', patient_id: 'P33090', nome_paciente: 'Ana Cláudia Menezes Silva',      data: '2026-03-24', atendente: 'Cida',    exame: 'Urina Tipo I (EAS)',         convenio: 'SUS',        valor_total: 22.00, valor_pago: 22.00, desconto: 0, acrescimo: 0, devedor: 0,     forma_pagamento: 'Dinheiro', parcelas: 1, situacao: 'pago',     data_entrega: '2026-03-24', observacoes: '',                       login_paciente: '', senha_paciente: '', qr_code_url: '', created_at: '2026-03-24T11:00:00' },
     { id: 'AT231500', patient_id: 'P33110', nome_paciente: 'Carlos Eduardo Rocha',           data: '2026-03-22', atendente: 'Adriana', exame: 'Glicemia em Jejum',          convenio: 'Particular', valor_total: 18.00, valor_pago: 18.00, desconto: 0, acrescimo: 0, devedor: 0,     forma_pagamento: 'Pix',      parcelas: 1, situacao: 'pago',     data_entrega: '2026-03-22', observacoes: 'Paciente diabético',    login_paciente: '', senha_paciente: '', qr_code_url: '', created_at: '2026-03-22T08:30:00' },
-    { id: 'AT231480', patient_id: 'P33198', nome_paciente: 'Roberto Alves Nascimento',       data: '2026-03-21', atendente: 'Kaleb',   exame: 'PSA Total e Livre',          convenio: 'Bradesco',   valor_total: 55.00, valor_pago: 55.00, desconto: 0, acrescimo: 0, devedor: 0,     forma_pagamento: 'Cartão',   parcelas: 1, situacao: 'pago',     data_entrega: '2026-03-28', observacoes: '',                       login_paciente: '', senha_paciente: '', qr_code_url: '', created_at: '2026-03-21T09:00:00' },
+    { id: 'AT231480', patient_id: 'P33198', nome_paciente: 'Roberto Alves Nascimento',       data: '2026-03-21', atendente: 'Kaleby',  exame: 'PSA Total e Livre',          convenio: 'Bradesco',   valor_total: 55.00, valor_pago: 55.00, desconto: 0, acrescimo: 0, devedor: 0,     forma_pagamento: 'Cartão',   parcelas: 1, situacao: 'pago',     data_entrega: '2026-03-28', observacoes: '',                       login_paciente: '', senha_paciente: '', qr_code_url: '', created_at: '2026-03-21T09:00:00' },
     { id: 'AT231460', patient_id: 'P33210', nome_paciente: 'Luciana Ferreira Borges',        data: '2026-03-19', atendente: 'Cida',    exame: 'Ferritina',                  convenio: 'Particular', valor_total: 38.00, valor_pago: 0,     desconto: 0, acrescimo: 0, devedor: 38.00, forma_pagamento: 'Pendente', parcelas: 1, situacao: 'pendente', data_entrega: '2026-03-26', observacoes: 'Aguardando pagamento',  login_paciente: '', senha_paciente: '', qr_code_url: '', created_at: '2026-03-19T14:00:00' },
     { id: 'AT231440', patient_id: 'P33240', nome_paciente: 'Marcos Vinícius Cardoso',        data: '2026-03-15', atendente: 'Adriana', exame: 'Hemograma Completo',         convenio: 'SUS',        valor_total: 25.00, valor_pago: 25.00, desconto: 0, acrescimo: 0, devedor: 0,     forma_pagamento: 'Dinheiro', parcelas: 1, situacao: 'pago',     data_entrega: '2026-03-16', observacoes: '',                       login_paciente: '', senha_paciente: '', qr_code_url: '', created_at: '2026-03-15T10:20:00' },
-    { id: 'AT231420', patient_id: 'P33260', nome_paciente: 'Rosangela Batista Pinto',        data: '2026-03-12', atendente: 'Kaleb',   exame: 'TGO / AST',                  convenio: 'Unimed',     valor_total: 20.00, valor_pago: 20.00, desconto: 0, acrescimo: 0, devedor: 0,     forma_pagamento: 'Pix',      parcelas: 1, situacao: 'pago',     data_entrega: '2026-03-13', observacoes: '',                       login_paciente: '', senha_paciente: '', qr_code_url: '', created_at: '2026-03-12T13:30:00' }
+    { id: 'AT231420', patient_id: 'P33260', nome_paciente: 'Rosangela Batista Pinto',        data: '2026-03-12', atendente: 'Kaleby',  exame: 'TGO / AST',                  convenio: 'Unimed',     valor_total: 20.00, valor_pago: 20.00, desconto: 0, acrescimo: 0, devedor: 0,     forma_pagamento: 'Pix',      parcelas: 1, situacao: 'pago',     data_entrega: '2026-03-13', observacoes: '',                       login_paciente: '', senha_paciente: '', qr_code_url: '', created_at: '2026-03-12T13:30:00' }
   ];
 
   const SEED_CAIXA = [
     { id: 'CX001', data: '2026-03-24', tipo: 'entrada', patient_id: 'P32912', paciente: 'Paulo Ricardo Nascimento Marti', servico: 'Hemograma Completo',        valor: 25.00,  forma: 'Pix',      parcelas: 1, atendente: 'Adriana',  obs: '',                       created_at: '2026-03-24T09:15:00' },
     { id: 'CX002', data: '2026-03-24', tipo: 'entrada', patient_id: 'P33001', paciente: 'Maria Aparecida dos Santos',     servico: 'TSH (Tireotropina)',         valor: 45.00,  forma: 'Cartão',   parcelas: 1, atendente: 'Cida',     obs: '',                       created_at: '2026-03-24T09:40:00' },
     { id: 'CX003', data: '2026-03-24', tipo: 'entrada', patient_id: 'P33145', paciente: 'Fernanda Beatriz Costa',         servico: 'Colesterol Total + Frações', valor: 20.00,  forma: 'Parcelado', parcelas: 2, atendente: 'Adriana', obs: 'Parcela 1/2',           created_at: '2026-03-24T10:05:00' },
-    { id: 'CX004', data: '2026-03-24', tipo: 'entrada', patient_id: 'P33042', paciente: 'João Carlos Pereira Lima',       servico: 'Vitamina D (25-OH)',         valor: 68.00,  forma: 'Dinheiro', parcelas: 1, atendente: 'Kaleb',    obs: 'Desconto R$5 aplicado', created_at: '2026-03-24T10:30:00' },
+    { id: 'CX004', data: '2026-03-24', tipo: 'entrada', patient_id: 'P33042', paciente: 'João Carlos Pereira Lima',       servico: 'Vitamina D (25-OH)',         valor: 68.00,  forma: 'Dinheiro', parcelas: 1, atendente: 'Kaleby',   obs: 'Desconto R$5 aplicado', created_at: '2026-03-24T10:30:00' },
     { id: 'CX005', data: '2026-03-24', tipo: 'entrada', patient_id: 'P33090', paciente: 'Ana Cláudia Menezes Silva',      servico: 'Urina Tipo I (EAS)',         valor: 22.00,  forma: 'Dinheiro', parcelas: 1, atendente: 'Cida',     obs: '',                       created_at: '2026-03-24T11:00:00' },
     { id: 'CX006', data: '2026-03-24', tipo: 'saida',   patient_id: '',       paciente: '',                               servico: 'Material de laboratório',    valor: 85.00,  forma: 'Dinheiro', parcelas: 1, atendente: 'Dr. Omar', obs: 'Reposição de reagentes', created_at: '2026-03-24T08:00:00' },
     { id: 'CX007', data: '2026-03-23', tipo: 'entrada', patient_id: 'P33110', paciente: 'Carlos Eduardo Rocha',           servico: 'Glicemia em Jejum',          valor: 18.00,  forma: 'Pix',      parcelas: 1, atendente: 'Adriana',  obs: '',                       created_at: '2026-03-23T09:00:00' },
-    { id: 'CX008', data: '2026-03-23', tipo: 'entrada', patient_id: 'P33198', paciente: 'Roberto Alves Nascimento',       servico: 'PSA Total e Livre',          valor: 55.00,  forma: 'Cartão',   parcelas: 1, atendente: 'Kaleb',    obs: '',                       created_at: '2026-03-23T10:30:00' },
+    { id: 'CX008', data: '2026-03-23', tipo: 'entrada', patient_id: 'P33198', paciente: 'Roberto Alves Nascimento',       servico: 'PSA Total e Livre',          valor: 55.00,  forma: 'Cartão',   parcelas: 1, atendente: 'Kaleby',   obs: '',                       created_at: '2026-03-23T10:30:00' },
     { id: 'CX009', data: '2026-03-22', tipo: 'entrada', patient_id: 'P33001', paciente: 'Maria Aparecida dos Santos',     servico: 'Hemograma Completo',         valor: 25.00,  forma: 'Dinheiro', parcelas: 1, atendente: 'Cida',     obs: '',                       created_at: '2026-03-22T08:30:00' },
     { id: 'CX010', data: '2026-03-22', tipo: 'saida',   patient_id: '',       paciente: '',                               servico: 'Energia elétrica',           valor: 320.00, forma: 'Dinheiro', parcelas: 1, atendente: 'Dr. Omar', obs: 'Conta de luz',          created_at: '2026-03-22T17:00:00' },
     { id: 'CX011', data: '2026-03-21', tipo: 'entrada', patient_id: 'P33210', paciente: 'Luciana Ferreira Borges',        servico: 'Ferritina',                  valor: 38.00,  forma: 'Pix',      parcelas: 1, atendente: 'Cida',     obs: '',                       created_at: '2026-03-21T14:20:00' },
     { id: 'CX012', data: '2026-03-20', tipo: 'entrada', patient_id: 'P33042', paciente: 'João Carlos Pereira Lima',       servico: 'TGP / ALT',                  valor: 20.00,  forma: 'Dinheiro', parcelas: 1, atendente: 'Adriana',  obs: '',                       created_at: '2026-03-20T11:00:00' },
-    { id: 'CX013', data: '2026-03-19', tipo: 'entrada', patient_id: 'P33145', paciente: 'Fernanda Beatriz Costa',         servico: 'Coagulograma (TP/TTPA)',     valor: 35.00,  forma: 'Dinheiro', parcelas: 1, atendente: 'Kaleb',    obs: '',                       created_at: '2026-03-19T09:30:00' },
+    { id: 'CX013', data: '2026-03-19', tipo: 'entrada', patient_id: 'P33145', paciente: 'Fernanda Beatriz Costa',         servico: 'Coagulograma (TP/TTPA)',     valor: 35.00,  forma: 'Dinheiro', parcelas: 1, atendente: 'Kaleby',   obs: '',                       created_at: '2026-03-19T09:30:00' },
     { id: 'CX014', data: '2026-03-18', tipo: 'entrada', patient_id: 'P33110', paciente: 'Carlos Eduardo Rocha',           servico: 'Creatinina',                 valor: 18.00,  forma: 'Pix',      parcelas: 1, atendente: 'Adriana',  obs: '',                       created_at: '2026-03-18T10:00:00' },
     { id: 'CX015', data: '2026-03-18', tipo: 'saida',   patient_id: '',       paciente: '',                               servico: 'Material de escritório',     valor: 45.00,  forma: 'Dinheiro', parcelas: 1, atendente: 'Cida',     obs: '',                       created_at: '2026-03-18T16:00:00' }
   ];
@@ -216,6 +218,7 @@ const DB = (() => {
       const rawCfg = localStorage.getItem(KEYS.config);
       cache.config = rawCfg ? JSON.parse(rawCfg) : DEFAULT_CONFIG;
     }
+    _normalizeLegacyNames();
     _initialized = true;
   }
 
@@ -242,6 +245,30 @@ const DB = (() => {
   ============================================================ */
   function _lsSync(key, arr) {
     if (!USE_SUPABASE) lsSave(key, arr);
+  }
+
+  function _normalizeLegacyStaffValue(value) {
+    if (value === 'Kaleb') return 'Kaleby';
+    if (value === 'kaleb') return 'kaleby';
+    return value;
+  }
+
+  function _normalizeLegacyNames() {
+    cache.funcionarios = cache.funcionarios.map(item => ({
+      ...item,
+      nome: _normalizeLegacyStaffValue(item.nome),
+      login: _normalizeLegacyStaffValue(item.login)
+    }));
+
+    cache.atendimentos = cache.atendimentos.map(item => ({
+      ...item,
+      atendente: _normalizeLegacyStaffValue(item.atendente)
+    }));
+
+    cache.caixa = cache.caixa.map(item => ({
+      ...item,
+      atendente: _normalizeLegacyStaffValue(item.atendente)
+    }));
   }
 
   /* ============================================================

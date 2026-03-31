@@ -53,9 +53,11 @@
               <span class="search-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
               <input class="search-input" id="atSearch" placeholder="Buscar paciente..." oninput="renderAt()" />
             </div>
+            <input class="form-input" id="atDataInicio" type="date" title="Data inicial" style="min-width:150px" onchange="renderAt()" />
+            <input class="form-input" id="atDataFim" type="date" title="Data final" style="min-width:150px" onchange="renderAt()" />
             <select class="filter-select" id="atFiltAtendente" onchange="renderAt()">
               <option value="">Todos atendentes</option>
-              <option>Adriana</option><option>Kaleb</option><option>Cida</option>
+              <option>Adriana</option><option>Kaleby</option><option>Cida</option>
             </select>
             <select class="filter-select" id="atFiltSituacao" onchange="renderAt()">
               <option value="">Todas situações</option>
@@ -63,6 +65,7 @@
               <option value="parcial">Parcial</option>
               <option value="pendente">Pendente</option>
             </select>
+            <button class="btn btn-secondary btn-sm" onclick="clearAtPeriodo()">Limpar periodo</button>
           </div>
         </div>
 
@@ -179,7 +182,7 @@
         <div class="form-group">
           <label class="form-label">Atendente</label>
           <select class="form-select" id="aAtendente">
-            <option>Adriana</option><option>Kaleb</option><option>Cida</option>
+            <option>Adriana</option><option>Kaleby</option><option>Cida</option>
           </select>
         </div>
       </div>
@@ -229,13 +232,23 @@
 
   function getFiltered(){
     const q=document.getElementById('atSearch').value.toLowerCase();
+    const inicio=document.getElementById('atDataInicio').value;
+    const fim=document.getElementById('atDataFim').value;
     const at=document.getElementById('atFiltAtendente').value;
     const sit=document.getElementById('atFiltSituacao').value;
     let list=DB.Atendimentos.getAll();
     if(q) list=list.filter(a=>a.nome_paciente.toLowerCase().includes(q)||a.exame.toLowerCase().includes(q));
+    if(inicio) list=list.filter(a=>a.data && a.data >= inicio);
+    if(fim) list=list.filter(a=>a.data && a.data <= fim);
     if(at) list=list.filter(a=>a.atendente===at);
     if(sit) list=list.filter(a=>a.situacao===sit);
     return list;
+  }
+
+  function clearAtPeriodo(){
+    document.getElementById('atDataInicio').value='';
+    document.getElementById('atDataFim').value='';
+    renderAt();
   }
 
   function renderStats(){

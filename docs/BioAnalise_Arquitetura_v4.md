@@ -202,7 +202,7 @@ CREATE TABLE IF NOT EXISTS public.handoffs (
   categoria        TEXT,       -- restricted_exam, complaint, human_request, etc.
   motivo           TEXT,
   status           TEXT DEFAULT 'pending',  -- pending, in_progress, resolved
-  atendente        TEXT,       -- Adriana, Kaleb, Cida
+  atendente        TEXT,       -- Adriana, Kaleby, Cida
   contexto_resumo  JSONB,
   created_at       TIMESTAMPTZ DEFAULT NOW(),
   resolved_at      TIMESTAMPTZ
@@ -557,3 +557,4 @@ UPDATE public.exames SET aliases = ARRAY['t4l','t4 livre'] WHERE nome = 'T4 Livr
 ---
 
 *Documento gerado em 30/03/2026 | Versão 4.0.0 | Bio Análise - Atendimento WhatsApp*
+
