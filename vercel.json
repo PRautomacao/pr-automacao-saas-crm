@@ -1,0 +1,47 @@
+{
+  "buildCommand": null,
+  "installCommand": null,
+  "outputDirectory": ".",
+  "trailingSlash": false,
+  "cleanUrls": false,
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options",        "value": "SAMEORIGIN" },
+        { "key": "Referrer-Policy",        "value": "strict-origin-when-cross-origin" }
+      ]
+    },
+    {
+      "source": "/js/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=3600, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/css/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=3600, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=86400" }
+      ]
+    }
+  ],
+  "rewrites": [
+    { "source": "/",           "destination": "/index.html" },
+    { "source": "/dashboard",  "destination": "/dashboard.html" },
+    { "source": "/agendamentos","destination": "/agendamentos.html" },
+    { "source": "/atendimentos","destination": "/atendimentos.html" },
+    { "source": "/pacientes",  "destination": "/pacientes.html" },
+    { "source": "/exames",     "destination": "/exames.html" },
+    { "source": "/caixa",      "destination": "/caixa.html" },
+    { "source": "/relatorios", "destination": "/relatorios.html" },
+    { "source": "/configuracoes","destination": "/configuracoes.html" },
+    { "source": "/funcionarios","destination": "/funcionarios.html" }
+  ]
+}
