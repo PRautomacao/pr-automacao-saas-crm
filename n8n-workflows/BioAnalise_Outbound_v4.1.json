@@ -1,0 +1,393 @@
+{
+  "name": "Bio Análise - Outbound Chatwoot → WhatsApp v4.1",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bio-analise-chatwoot-outbound",
+        "options": {}
+      },
+      "id": "9c24fe74-ec48-4fb7-93ff-c3acdfac67e3",
+      "name": "Webhook_Chatwoot_Outbound",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "bio-analise-cw-outbound"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw=$input.item.json;\n// Chatwoot envia diferentes estruturas dependendo da versão\nconst event=raw.event||raw.type||'';\nif(!['message_created','message_updated'].includes(event))return[];\n\nconst data=raw.data||raw;\nconst msgType=data.message_type;  // 0=incoming, 1=outgoing, 2=activity\nconst isPrivate=Boolean(data.private);\nconst sender=data.sender||{};\nconst senderType=String(sender.type||'').toLowerCase();\n\n// Só processa mensagens SAINDO (agent→cliente), não privadas, de agent/administrator\nif(msgType!==1)return[];\nif(isPrivate)return[];\nif(!['agent','administrator'].includes(senderType))return[];\n\nconst conversation=data.conversation||{};\nconst contact=conversation.contact||{};\nconst phone=String(contact.phone_number||'').replace(/\\D/g,'');\nif(!phone)return[];\n\nconst convId=String(conversation.id||data.conversation_id||'');\nif(!convId)return[];\n\nreturn[{json:{\n  ...raw,\n  _cw_event:event,\n  _cw_message_id:String(data.id||''),\n  _cw_conv_id:convId,\n  _cw_content:String(data.content||''),\n  _cw_sender_name:String(sender.name||'Atendente'),\n  _cw_sender_type:senderType,\n  _contact_phone:phone,\n  _contact_name:String(contact.name||'Cliente')\n}}];"
+      },
+      "id": "77cc3410-5274-44b4-9c2c-ac7a499ba2cb",
+      "name": "Filtro_Chatwoot",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/atendimentos",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_KEY }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "chatwoot_conversation_id",
+              "value": "=eq.{{ $json._cw_conv_id }}"
+            },
+            {
+              "name": "select",
+              "value": "conversation_id,telefone,paciente_id,agendamento_nome,contexto"
+            },
+            {
+              "name": "limit",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9b56fbfc-5735-4780-9392-731f4c81e32f",
+      "name": "Buscar_Atendimento_Por_Conv",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Recebe resultado do Supabase\nconst raw=$json;\nconst items=Array.isArray(raw)?raw:[];\nconst atend=items[0]||null;\nconst item=$('Filtro_Chatwoot').item.json;\nif(!atend){\n  // Não encontrou atendimento — tentar construir conversation_id a partir do telefone\n  return[{json:{...item,_atend_found:false,\n    phone_jid:item._contact_phone+'@s.whatsapp.net',\n    evo_instance:$env.EVO_INSTANCE||'',\n    conversation_id:'wa_'+item._contact_phone\n  }}];\n}\nreturn[{json:{...item,_atend_found:true,\n  phone_jid:atend.telefone?atend.telefone+'@s.whatsapp.net':(item._contact_phone+'@s.whatsapp.net'),\n  evo_instance:$env.EVO_INSTANCE||'',\n  conversation_id:atend.conversation_id||('wa_'+item._contact_phone),\n  paciente_id:atend.paciente_id||null,\n  paciente_nome:atend.agendamento_nome||(atend.contexto&&atend.contexto.paciente_nome)||item._contact_name\n}}];"
+      },
+      "id": "2162b132-bac7-4113-b7d4-31a8dd4fefde",
+      "name": "Montar_Payload_Outbound",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "tt",
+              "leftValue": "={{ Boolean($json.phone_jid) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "dd5e3580-0bf9-41f5-b0f2-25deb37afe2b",
+      "name": "If_Tem_Telefone",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVO_BASE_URL }}/message/sendText/{{ $env.EVO_INSTANCE }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVO_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { number: $json.phone_jid, text: $json._cw_content } }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "b67edb9a-1152-45f8-b1bb-ff45ca3bf791",
+      "name": "Enviar_WA_Outbound",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1300,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item=$input.item.json;\n// Payload para marcar human_active = true no Supabase\nreturn[{json:{\n  ...item,\n  human_update_payload:{\n    human_active:true,\n    current_owner:'human',\n    current_status:'human_attending',\n    last_human_message:item._cw_content,\n    last_human_sender:item._cw_sender_name,\n    updated_at:new Date().toISOString()\n  }\n}}];"
+      },
+      "id": "eb2c2154-fa99-46bd-b480-0d71e6995b31",
+      "name": "Preparar_Update_Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/atendimentos",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.human_update_payload }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "conversation_id",
+              "value": "=eq.{{ $json.conversation_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f5702dd7-7aec-4bbc-bdde-1a47b9d7bea5",
+      "name": "Atualizar_Human_Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1820,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "so1",
+              "name": "status",
+              "value": "sent",
+              "type": "string"
+            },
+            {
+              "id": "so2",
+              "name": "conversation_id",
+              "value": "={{ $json.conversation_id }}",
+              "type": "string"
+            },
+            {
+              "id": "so3",
+              "name": "sender",
+              "value": "={{ $json._cw_sender_name }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d7bd1155-e2f6-455f-abf9-c07571d9762e",
+      "name": "Saida_Outbound",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2080,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ss1",
+              "name": "status",
+              "value": "skipped_no_phone",
+              "type": "string"
+            },
+            {
+              "id": "ss2",
+              "name": "cw_conv_id",
+              "value": "={{ $json._cw_conv_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cfb3f110-737a-45d0-88c6-563585fa09cd",
+      "name": "Skip_Sem_Telefone",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1300,
+        140
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook_Chatwoot_Outbound": {
+      "main": [
+        [
+          {
+            "node": "Filtro_Chatwoot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtro_Chatwoot": {
+      "main": [
+        [
+          {
+            "node": "Buscar_Atendimento_Por_Conv",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar_Atendimento_Por_Conv": {
+      "main": [
+        [
+          {
+            "node": "Montar_Payload_Outbound",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar_Payload_Outbound": {
+      "main": [
+        [
+          {
+            "node": "If_Tem_Telefone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If_Tem_Telefone": {
+      "main": [
+        [
+          {
+            "node": "Enviar_WA_Outbound",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip_Sem_Telefone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar_WA_Outbound": {
+      "main": [
+        [
+          {
+            "node": "Preparar_Update_Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar_Update_Status": {
+      "main": [
+        [
+          {
+            "node": "Atualizar_Human_Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Atualizar_Human_Supabase": {
+      "main": [
+        [
+          {
+            "node": "Saida_Outbound",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "versionId": "b0fe92b3-d2dd-4f46-9d1a-2a3337e1b494",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {}
+}
