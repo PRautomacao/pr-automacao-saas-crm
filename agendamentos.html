@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agendamentos — Bio Análise</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <style>
+    /* ── Tabs ── */
+    .tabs-bar {
+      display: flex;
+      gap: 4px;
+      border-bottom: 2px solid var(--gray-200);
+      margin-bottom: 20px;
+    }
+    .tab-btn {
+      padding: 10px 22px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--gray-500);
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      cursor: pointer;
+      border-radius: 6px 6px 0 0;
+      transition: color .2s, border-color .2s;
+    }
+    .tab-btn:hover { color: var(--primary-600); }
+    .tab-btn.active {
+      color: var(--primary-700);
+      border-bottom-color: var(--primary-600);
+      background: var(--primary-50);
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Status badges ── */
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .4px;
+    }
+    .badge-pendente   { background: #fef3c7; color: #92400e; }
+    .badge-confirmado { background: #d1fae5; color: #065f46; }
+    .badge-cancelado  { background: #fee2e2; color: #991b1b; }
+    .badge-realizado  { background: #dbeafe; color: #1e40af; }
+
+    /* ── Canal badge ── */
+    .badge-whatsapp   { background: #dcfce7; color: #166534; }
+    .badge-presencial { background: #ede9fe; color: #5b21b6; }
+
+    /* ── Modal override ── */
+    .modal-body .exames-list {
+      max-height: 150px;
+      overflow-y: auto;
+      background: var(--gray-50);
+      border: 1px solid var(--gray-200);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+    }
+    .exames-list li { margin-bottom: 4px; }
+
+    /* ── Empty state ── */
+    .empty-state {
+      text-align: center;
+      padding: 48px 20px;
+      color: var(--gray-400);
+    }
+    .empty-state svg { margin-bottom: 14px; opacity: .4; }
+    .empty-state p { font-size: 14px; }
+  </style>
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebar-mount"></div>
+  <div class="main-content">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="topbar-title">Agendamentos</div>
+          <div class="topbar-breadcrumb">Solicitações via WhatsApp e presencial</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-primary" onclick="openNovoAgend()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Novo Agendamento
+        </button>
+      </div>
+    </header>
+
+    <main class="page-content">
+
+      <!-- Summary -->
+      <div class="summary-row mb-6">
+        <div class="summary-item blue">
+          <div class="summary-item-label">Total</div>
+          <div class="summary-item-value" id="agTotal">0</div>
+        </div>
+        <div class="summary-item" style="--col:#f59e0b">
+          <div class="summary-item-label">Pendentes</div>
+          <div class="summary-item-value" id="agPendentes">0</div>
+        </div>
+        <div class="summary-item green">
+          <div class="summary-item-label">Confirmados</div>
+          <div class="summary-item-value" id="agConfirmados">0</div>
+        </div>
+        <div class="summary-item" style="--col:#8b5cf6">
+          <div class="summary-item-label">Via WhatsApp</div>
+          <div class="summary-item-value" id="agWhatsapp">0</div>
+        </div>
+      </div>
+
+      <!-- Tabs + Table -->
+      <div class="table-wrapper">
+        <div class="table-toolbar">
+          <div class="tabs-bar">
+            <button class="tab-btn active" id="tabWA"   onclick="switchTab('whatsapp')">📱 Via WhatsApp</button>
+            <button class="tab-btn"        id="tabPres" onclick="switchTab('presencial')">🏥 Presencial</button>
+          </div>
+          <div class="table-actions">
+            <div class="search-input-wrapper">
+              <span class="search-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+              <input class="search-input" id="agSearch" placeholder="Buscar paciente..." oninput="renderTable()" />
+            </div>
+            <select class="filter-select" id="agFiltStatus" onchange="renderTable()">
+              <option value="">Todos status</option>
+              <option value="pendente">Pendente</option>
+              <option value="confirmado">Confirmado</option>
+              <option value="realizado">Realizado</option>
+              <option value="cancelado">Cancelado</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Tab: WhatsApp -->
+        <div id="panelWA" class="tab-panel active">
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Paciente</th>
+                  <th>Telefone</th>
+                  <th>Exames</th>
+                  <th>Tipo</th>
+                  <th>Data Pref.</th>
+                  <th>Horário</th>
+                  <th>Total</th>
+                  <th>Status</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyWA"></tbody>
+            </table>
+          </div>
+          <div class="table-footer"><span id="agCountWA"></span></div>
+        </div>
+
+        <!-- Tab: Presencial -->
+        <div id="panelPres" class="tab-panel">
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Paciente</th>
+                  <th>Telefone</th>
+                  <th>Exames</th>
+                  <th>Tipo</th>
+                  <th>Data Pref.</th>
+                  <th>Horário</th>
+                  <th>Total</th>
+                  <th>Status</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyPres"></tbody>
+            </table>
+          </div>
+          <div class="table-footer"><span id="agCountPres"></span></div>
+        </div>
+      </div><!-- /table-wrapper -->
+
+    </main>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     MODAL — Visualizar / Editar agendamento
+════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="modalAg">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div class="modal-title" id="modalAgTitle">Detalhes do Agendamento</div>
+      <button class="modal-close" onclick="UTILS.closeModal('modalAg')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="agId" />
+
+      <div class="form-row mb-4">
+        <div class="form-group" style="flex:2">
+          <label class="form-label">Paciente *</label>
+          <input class="form-input" id="agNome" placeholder="Nome do paciente" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Telefone</label>
+          <input class="form-input" id="agTelefone" placeholder="(64) 9xxxx-xxxx" />
+        </div>
+      </div>
+
+      <div class="form-row mb-4">
+        <div class="form-group">
+          <label class="form-label">Canal</label>
+          <select class="form-input" id="agCanal">
+            <option value="whatsapp">WhatsApp</option>
+            <option value="presencial">Presencial</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tipo de Coleta</label>
+          <select class="form-input" id="agTipoColeta">
+            <option value="presencial">Presencial</option>
+            <option value="domiciliar">Domiciliar</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <select class="form-input" id="agStatus">
+            <option value="pendente">Pendente</option>
+            <option value="confirmado">Confirmado</option>
+            <option value="realizado">Realizado</option>
+            <option value="cancelado">Cancelado</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row mb-4">
+        <div class="form-group">
+          <label class="form-label">Data Preferida</label>
+          <input class="form-input" id="agData" type="date" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Horário Preferido</label>
+          <input class="form-input" id="agHorario" type="time" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Convênio</label>
+          <input class="form-input" id="agConvenio" placeholder="Particular / Unimed..." />
+        </div>
+      </div>
+
+      <div class="form-group mb-4">
+        <label class="form-label">Exames solicitados</label>
+        <textarea class="form-input" id="agExamesNomes" rows="3" placeholder="Hemograma, Glicemia..."></textarea>
+      </div>
+
+      <div class="form-row mb-4">
+        <div class="form-group">
+          <label class="form-label">Valor Total (R$)</label>
+          <input class="form-input" id="agTotal2" type="number" step="0.01" placeholder="0,00" />
+        </div>
+        <div class="form-group" style="flex:3">
+          <label class="form-label">Observações</label>
+          <input class="form-input" id="agObs" placeholder="Observações adicionais..." />
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="UTILS.closeModal('modalAg')">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarAgend()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     SCRIPTS
+════════════════════════════════════════════════ -->
+<script src="js/supabase.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/sidebar.js"></script>
+<script src="js/utils.js"></script>
+
+<script>
+/* ──────────────────────────────────────────────
+   ESTADO
+────────────────────────────────────────────── */
+let _agendamentos = [];
+let _tabAtual = 'whatsapp';
+
+/* ──────────────────────────────────────────────
+   INIT
+────────────────────────────────────────────── */
+window.addEventListener('DOMContentLoaded', async () => {
+  if (!AUTH.check()) return;
+  SIDEBAR.render('agendamentos.html');
+  await carregarAgendamentos();
+  atualizarSummary();
+  renderTable();
+});
+
+/* ──────────────────────────────────────────────
+   CARREGAR DADOS
+────────────────────────────────────────────── */
+async function carregarAgendamentos() {
+  if (typeof SUPA !== 'undefined' && SUPA !== null) {
+    const { data, error } = await SUPA
+      .from('agendamentos')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (!error && data) {
+      _agendamentos = data;
+      return;
+    }
+    console.warn('Supabase agendamentos error:', error);
+  }
+  // Fallback: localStorage
+  const raw = localStorage.getItem('ba_agendamentos_v2');
+  _agendamentos = raw ? JSON.parse(raw) : SEED_AGENDAMENTOS;
+  if (!raw) localStorage.setItem('ba_agendamentos_v2', JSON.stringify(SEED_AGENDAMENTOS));
+}
+
+async function salvarSupabase(obj) {
+  if (typeof SUPA === 'undefined' || SUPA === null) return false;
+  const { error } = await SUPA.from('agendamentos').upsert(obj, { onConflict: 'id' });
+  return !error;
+}
+
+/* ──────────────────────────────────────────────
+   TABS
+────────────────────────────────────────────── */
+function switchTab(tab) {
+  _tabAtual = tab;
+  document.getElementById('tabWA').classList.toggle('active', tab === 'whatsapp');
+  document.getElementById('tabPres').classList.toggle('active', tab === 'presencial');
+  document.getElementById('panelWA').classList.toggle('active', tab === 'whatsapp');
+  document.getElementById('panelPres').classList.toggle('active', tab === 'presencial');
+  renderTable();
+}
+
+/* ──────────────────────────────────────────────
+   SUMMARY
+────────────────────────────────────────────── */
+function atualizarSummary() {
+  const total = _agendamentos.length;
+  const pendentes = _agendamentos.filter(a => (a.status || 'pendente') === 'pendente').length;
+  const confirmados = _agendamentos.filter(a => a.status === 'confirmado').length;
+  const wa = _agendamentos.filter(a => (a.canal || 'whatsapp') === 'whatsapp').length;
+
+  document.getElementById('agTotal').textContent = total;
+  document.getElementById('agPendentes').textContent = pendentes;
+  document.getElementById('agConfirmados').textContent = confirmados;
+  document.getElementById('agWhatsapp').textContent = wa;
+}
+
+/* ──────────────────────────────────────────────
+   RENDER TABLE
+────────────────────────────────────────────── */
+function renderTable() {
+  const q = (document.getElementById('agSearch').value || '').toLowerCase();
+  const st = (document.getElementById('agFiltStatus').value || '').toLowerCase();
+
+  const filtrado = _agendamentos.filter(a => {
+    const canal = (a.canal || 'whatsapp').toLowerCase();
+    if (canal !== _tabAtual) return false;
+    if (q && !(a.nome_paciente || '').toLowerCase().includes(q)) return false;
+    if (st && (a.status || 'pendente') !== st) return false;
+    return true;
+  });
+
+  const tbody = document.getElementById(_tabAtual === 'whatsapp' ? 'tbodyWA' : 'tbodyPres');
+  const countEl = document.getElementById(_tabAtual === 'whatsapp' ? 'agCountWA' : 'agCountPres');
+
+  if (!filtrado.length) {
+    tbody.innerHTML = `<tr><td colspan="9">
+      <div class="empty-state">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <p>Nenhum agendamento encontrado.</p>
+      </div>
+    </td></tr>`;
+    countEl.textContent = 'Nenhum registro';
+    return;
+  }
+
+  tbody.innerHTML = filtrado.map(a => {
+    const status = a.status || 'pendente';
+    const tipo = a.tipo_coleta || 'presencial';
+    const examesStr = a.exames_nomes || (Array.isArray(a.exames) ? a.exames.map(e => e.nome || e).join(', ') : '—');
+    const total = typeof a.total === 'number' ? `R$ ${a.total.toFixed(2)}` : '—';
+    const dataPref = a.data_preferida ? formatDate(a.data_preferida) : '—';
+    const horario = a.horario_preferido || '—';
+    const tel = a.telefone ? fmtTel(a.telefone) : '—';
+
+    return `<tr>
+      <td><strong>${esc(a.nome_paciente || '—')}</strong></td>
+      <td>${esc(tel)}</td>
+      <td style="max-width:200px;white-space:normal;font-size:12px">${esc(truncate(examesStr, 60))}</td>
+      <td><span class="badge ${tipo === 'domiciliar' ? 'badge-whatsapp' : 'badge-presencial'}">${tipo}</span></td>
+      <td>${dataPref}</td>
+      <td>${esc(horario)}</td>
+      <td>${total}</td>
+      <td><span class="badge badge-${status}">${status}</span></td>
+      <td>
+        <div style="display:flex;gap:6px">
+          <button class="btn-icon btn-icon-edit" title="Editar" onclick="editarAgend('${a.id}')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          ${status === 'pendente' ? `
+          <button class="btn-icon" style="color:#10b981" title="Confirmar" onclick="confirmarAgend('${a.id}')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          </button>` : ''}
+          <button class="btn-icon btn-icon-del" title="Excluir" onclick="excluirAgend('${a.id}')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          </button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  countEl.textContent = `Exibindo ${filtrado.length} de ${filtrado.length} registro${filtrado.length !== 1 ? 's' : ''}`;
+}
+
+/* ──────────────────────────────────────────────
+   MODAL — NOVO
+────────────────────────────────────────────── */
+function openNovoAgend() {
+  document.getElementById('agId').value = '';
+  document.getElementById('agNome').value = '';
+  document.getElementById('agTelefone').value = '';
+  document.getElementById('agCanal').value = _tabAtual;
+  document.getElementById('agTipoColeta').value = 'presencial';
+  document.getElementById('agStatus').value = 'pendente';
+  document.getElementById('agData').value = '';
+  document.getElementById('agHorario').value = '';
+  document.getElementById('agConvenio').value = '';
+  document.getElementById('agExamesNomes').value = '';
+  document.getElementById('agTotal2').value = '';
+  document.getElementById('agObs').value = '';
+  document.getElementById('modalAgTitle').textContent = 'Novo Agendamento';
+  UTILS.openModal('modalAg');
+}
+
+/* ──────────────────────────────────────────────
+   MODAL — EDITAR
+────────────────────────────────────────────── */
+function editarAgend(id) {
+  const a = _agendamentos.find(x => String(x.id) === String(id));
+  if (!a) return;
+  document.getElementById('agId').value = a.id;
+  document.getElementById('agNome').value = a.nome_paciente || '';
+  document.getElementById('agTelefone').value = a.telefone || '';
+  document.getElementById('agCanal').value = a.canal || 'whatsapp';
+  document.getElementById('agTipoColeta').value = a.tipo_coleta || 'presencial';
+  document.getElementById('agStatus').value = a.status || 'pendente';
+  document.getElementById('agData').value = a.data_preferida || '';
+  document.getElementById('agHorario').value = a.horario_preferido || '';
+  document.getElementById('agConvenio').value = a.convenio || '';
+  document.getElementById('agExamesNomes').value = a.exames_nomes ||
+    (Array.isArray(a.exames) ? a.exames.map(e => e.nome || e).join(', ') : '');
+  document.getElementById('agTotal2').value = a.total || '';
+  document.getElementById('agObs').value = a.observacoes || '';
+  document.getElementById('modalAgTitle').textContent = 'Editar Agendamento';
+  UTILS.openModal('modalAg');
+}
+
+/* ──────────────────────────────────────────────
+   SALVAR
+────────────────────────────────────────────── */
+async function salvarAgend() {
+  const nome = document.getElementById('agNome').value.trim();
+  if (!nome) { alert('Informe o nome do paciente.'); return; }
+
+  const idExistente = document.getElementById('agId').value;
+  const obj = {
+    nome_paciente:   nome,
+    telefone:        document.getElementById('agTelefone').value.trim(),
+    canal:           document.getElementById('agCanal').value,
+    tipo_coleta:     document.getElementById('agTipoColeta').value,
+    status:          document.getElementById('agStatus').value,
+    data_preferida:  document.getElementById('agData').value || null,
+    horario_preferido: document.getElementById('agHorario').value || null,
+    convenio:        document.getElementById('agConvenio').value.trim() || null,
+    exames_nomes:    document.getElementById('agExamesNomes').value.trim(),
+    total:           parseFloat(document.getElementById('agTotal2').value) || null,
+    observacoes:     document.getElementById('agObs').value.trim() || null,
+    updated_at:      new Date().toISOString()
+  };
+
+  if (idExistente) {
+    obj.id = idExistente;
+    const idx = _agendamentos.findIndex(x => String(x.id) === idExistente);
+    if (idx >= 0) _agendamentos[idx] = { ..._agendamentos[idx], ...obj };
+  } else {
+    obj.id = 'AG' + Date.now();
+    obj.created_at = new Date().toISOString();
+    _agendamentos.unshift(obj);
+  }
+
+  await salvarSupabase(obj);
+
+  // fallback localStorage
+  if (typeof SUPA === 'undefined' || SUPA === null) {
+    localStorage.setItem('ba_agendamentos_v2', JSON.stringify(_agendamentos));
+  }
+
+  UTILS.closeModal('modalAg');
+  atualizarSummary();
+  renderTable();
+}
+
+/* ──────────────────────────────────────────────
+   CONFIRMAR RÁPIDO
+────────────────────────────────────────────── */
+async function confirmarAgend(id) {
+  if (!confirm('Confirmar este agendamento?')) return;
+  const idx = _agendamentos.findIndex(x => String(x.id) === String(id));
+  if (idx < 0) return;
+  _agendamentos[idx].status = 'confirmado';
+  _agendamentos[idx].updated_at = new Date().toISOString();
+  await salvarSupabase({ id, status: 'confirmado', updated_at: _agendamentos[idx].updated_at });
+  if (typeof SUPA === 'undefined' || SUPA === null)
+    localStorage.setItem('ba_agendamentos_v2', JSON.stringify(_agendamentos));
+  atualizarSummary();
+  renderTable();
+}
+
+/* ──────────────────────────────────────────────
+   EXCLUIR
+────────────────────────────────────────────── */
+async function excluirAgend(id) {
+  if (!confirm('Excluir este agendamento?')) return;
+  _agendamentos = _agendamentos.filter(x => String(x.id) !== String(id));
+  if (typeof SUPA !== 'undefined' && SUPA !== null) {
+    await SUPA.from('agendamentos').delete().eq('id', id);
+  } else {
+    localStorage.setItem('ba_agendamentos_v2', JSON.stringify(_agendamentos));
+  }
+  atualizarSummary();
+  renderTable();
+}
+
+/* ──────────────────────────────────────────────
+   HELPERS
+────────────────────────────────────────────── */
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function truncate(s, n) { return s.length > n ? s.substring(0, n) + '...' : s; }
+function formatDate(d) {
+  if (!d) return '—';
+  const parts = String(d).split('T')[0].split('-');
+  if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  return d;
+}
+function fmtTel(t) {
+  const n = String(t).replace(/\D/g, '');
+  if (n.length === 11) return `(${n.slice(0,2)}) ${n.slice(2,7)}-${n.slice(7)}`;
+  if (n.length === 10) return `(${n.slice(0,2)}) ${n.slice(2,6)}-${n.slice(6)}`;
+  return t;
+}
+
+/* ──────────────────────────────────────────────
+   SEED para demo (fallback localStorage)
+────────────────────────────────────────────── */
+const SEED_AGENDAMENTOS = [
+  {
+    id: 'AG001', canal: 'whatsapp', nome_paciente: 'Maria Aparecida dos Santos',
+    telefone: '64998127843', tipo_coleta: 'presencial',
+    data_preferida: '2026-04-02', horario_preferido: '08:00',
+    exames_nomes: 'Hemograma Completo, TSH, Glicemia',
+    total: 75.00, convenio: 'Particular', status: 'pendente',
+    observacoes: 'Paciente solicita horário cedo', created_at: new Date().toISOString()
+  },
+  {
+    id: 'AG002', canal: 'whatsapp', nome_paciente: 'João Carlos Pereira Lima',
+    telefone: '64996301188', tipo_coleta: 'domiciliar',
+    data_preferida: '2026-04-03', horario_preferido: '07:30',
+    exames_nomes: 'Beta HCG Quantitativo, Perfil Lipídico',
+    total: 100.00, convenio: 'Particular', status: 'confirmado',
+    observacoes: '', created_at: new Date().toISOString()
+  },
+  {
+    id: 'AG003', canal: 'presencial', nome_paciente: 'Ana Cláudia Menezes Silva',
+    telefone: '64997406671', tipo_coleta: 'presencial',
+    data_preferida: '2026-04-01', horario_preferido: '09:00',
+    exames_nomes: 'EAS, EPF',
+    total: 40.00, convenio: 'SUS', status: 'realizado',
+    observacoes: '', created_at: new Date().toISOString()
+  }
+];
+</script>
+</body>
+</html>
