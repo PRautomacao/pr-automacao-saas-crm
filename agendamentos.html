@@ -299,7 +299,8 @@ let _tabAtual = 'whatsapp';
    INIT
 ────────────────────────────────────────────── */
 window.addEventListener('DOMContentLoaded', async () => {
-  if (!AUTH.check()) return;
+  const session = AUTH.requireAuth();
+  if (!session) return;
   SIDEBAR.render('agendamentos.html');
   await carregarAgendamentos();
   atualizarSummary();
