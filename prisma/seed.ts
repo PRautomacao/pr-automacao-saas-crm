@@ -15,7 +15,7 @@ async function main() {
       slug: 'bio-analise',
       niche: 'Saúde/Laboratório',
       phone: '(62) 3232-3232',
-      email: 'contato@bioanalise.com.br',
+      email: 'contato@cliente.com.br',
       address: 'Av. T-9, 456, St. Bueno, Goiânia-GO',
       document: '12.345.678/0001-90',
       isActive: true,
@@ -55,10 +55,10 @@ async function main() {
   const attendantPassword = await bcrypt.hash('attendant123', 10);
 
   const admin1 = await prisma.user.upsert({
-    where: { email: 'admin@bioanalise.com.br' },
+    where: { email: 'admin@cliente.com.br' },
     update: {},
     create: {
-      email: 'admin@bioanalise.com.br',
+      email: 'admin@cliente.com.br',
       password: adminPassword,
       name: 'Kaleby Silva',
       role: 'ADMIN',
@@ -68,10 +68,10 @@ async function main() {
   });
 
   const manager1 = await prisma.user.upsert({
-    where: { email: 'gerente@bioanalise.com.br' },
+    where: { email: 'gerente@cliente.com.br' },
     update: {},
     create: {
-      email: 'gerente@bioanalise.com.br',
+      email: 'gerente@cliente.com.br',
       password: managerPassword,
       name: 'Adriana Costa',
       role: 'MANAGER',
@@ -81,10 +81,10 @@ async function main() {
   });
 
   const attendant1 = await prisma.user.upsert({
-    where: { email: 'atendente@bioanalise.com.br' },
+    where: { email: 'atendente@cliente.com.br' },
     update: {},
     create: {
-      email: 'atendente@bioanalise.com.br',
+      email: 'atendente@cliente.com.br',
       password: attendantPassword,
       name: 'Cida Oliveira',
       role: 'ATTENDANT',
@@ -201,9 +201,9 @@ async function main() {
   console.log('📋 Login credentials:');
   console.log('');
   console.log('  Company: Bio Análise Laboratório (bio-analise)');
-  console.log('  Admin:   admin@bioanalise.com.br / admin123');
-  console.log('  Manager: gerente@bioanalise.com.br / manager123');
-  console.log('  Attendant: atendente@bioanalise.com.br / attendant123');
+  console.log('  Admin:   admin@cliente.com.br / admin123');
+  console.log('  Manager: gerente@cliente.com.br / manager123');
+  console.log('  Attendant: atendente@cliente.com.br / attendant123');
   console.log('');
 }
 

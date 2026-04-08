@@ -75,7 +75,7 @@ export default function LoginPage() {
                     value={credentials.email}
                     onChange={(e) => setCredentials({ ...credentials, email: e.target.value })}
                     className="w-full px-4 py-3 bg-[#F8FAFC] border-none rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-600/20 focus:outline-none transition-all text-[15px] font-medium text-slate-900 placeholder:text-slate-400 placeholder:font-normal shadow-inner shadow-slate-100/50"
-                    placeholder="admin@bioanalise.com.br"
+                    placeholder="admin@cliente.com.br"
                     required
                   />
                </div>
