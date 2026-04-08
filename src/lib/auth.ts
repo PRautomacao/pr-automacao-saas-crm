@@ -11,7 +11,8 @@ export const authOptions: NextAuthOptions = {
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
-        return await authService.validateCredentials(credentials?.email, credentials?.password);
+        const user = await authService.validateCredentials(credentials?.email, credentials?.password);
+        return user as any;
       },
     }),
   ],
