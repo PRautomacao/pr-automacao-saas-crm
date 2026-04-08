@@ -1,0 +1,2188 @@
+{
+  "name": "Bio Análise - Atendimento WhatsApp",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bio-analise-whatsapp",
+        "options": {}
+      },
+      "id": "9044cde0-3620-4b83-959a-491d2c7165fc",
+      "name": "Evolution API Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        -720,
+        -1792
+      ],
+      "webhookId": "bio-analise-wa-v3"
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Config Clínica v3 — SEM catálogo hardcoded\n// O catálogo vem do Supabase (public.exames)\nconst item = $input.item.json;\n\nconst clinic_profile = {\n  brand_name:      'Bio Análise',\n  legal_name:      'Pereira e Lima Análise Clínica Ltda',\n  cnpj:            '12.234.310/0001-50',\n  main_address:    'Av. Pará, nº 365, Centro, Iporá-GO',\n  city:            'Iporá-GO',\n  main_phone:      '(64) 3603-1306',\n  main_whatsapp:   '(64) 3603-1306',\n  corporate_email: 'bioanaliselab@bol.com.br',\n  instagram:       'https://www.instagram.com/bioanaliseipora',\n  // HORÁRIOS — somente coleta está validado pela clínica\n  horario_coleta: {\n    monday_to_friday: '06:30 às 16:00',\n    saturday:         '07:00 às 09:00',\n    sunday:           null,\n    nota:             'Coleta de sangue e materiais biológicos'\n  },\n  horario_atendimento: null,   // não confirmado — não usar em respostas ao paciente\n  horario_resultados:  null,   // não confirmado — encaminhar ao atendente se perguntado\n  office_hours:        null,   // alias mantido null para compatibilidade; usar horario_coleta\n  convenios: ['Caesan','Cassi','Celgmd','Vivacom','Itaú Saúde','Ipasgo','Postal Saúde','Bradesco Saúde','Saúde Caixa'],\n  payment: {\n    pix_key:      '64 98459 3264',\n    pix_name:     'Bio Análise Laboratório',\n    installments: 'Parcelamento sem juros: acima de R$ 400 em 2x | acima de R$ 600 em 3x.',\n    cash: true,\n    card: true\n  },\n  human_staff: [\n    { name: 'Adriana', role: 'Atendente' },\n    { name: 'Kaleb',   role: 'Atendente' },\n    { name: 'Cida',    role: 'Atendente' }\n  ],\n  human_agents: ['Adriana','Kaleb','Cida'],\n  base_greeting: 'Olá, aqui é da Bio Análise! Em que posso ajudar?'\n};\n\n// Alias de retrocompatibilidade temporário — remover após confirmar que\n// nenhum trecho legado usa p.collection_hours\nclinic_profile.collection_hours = clinic_profile.horario_coleta;\n\n// Exames que NUNCA devem ser detalhados via bot — passar sempre para atendente\nconst restricted_topics = [\n  'beta hcg','beta hcg qualitativo','beta hcg quantitativo',\n  'hcg','sexagem fetal','dna','teste de paternidade','paternidade'\n];\n\nconst handoff_templates = [\n  'Esse atendimento precisa ser conduzido por um atendente da Bio Análise. Vou encaminhar sua solicitação para nossa equipe, tudo bem?',\n  'Para garantir a orientação correta, vou encaminhar seu atendimento para a nossa equipe. Em breve entrarão em contato.',\n  'Nossa equipe vai dar seguimento a esse atendimento. Aguarde, por favor.'\n];\n\nreturn [{ json: {\n  ...item,\n  clinic_profile,\n  restricted_topics,\n  handoff_templates,\n  workflow_version: '3.2.0'\n} }];\n"
+      },
+      "id": "6b1a9630-0a04-46ca-ab6b-47fa2650cdcd",
+      "name": "Config Clinica",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        64,
+        -1824
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst base = $('Montar Base1').item.json;\nconst rawEvent = $input.item.json;\nconst data = rawEvent.data || {};\nconst key  = data.key  || {};\nconst msg  = data.message || {};\nconst messageType = data.messageType || 'unknown';\n\nconst remoteJid   = key.remoteJid || '';\nconst phoneRaw    = remoteJid.replace('@s.whatsapp.net','').replace('@g.us','');\nconst phoneNorm   = phoneRaw.replace(/\\D/g,'');\nconst customerName = (data.pushName || 'Cliente WhatsApp').trim();\n\nlet messageText = '';\nif (msg.conversation)                      messageText = msg.conversation;\nelse if (msg.extendedTextMessage)          messageText = msg.extendedTextMessage.text || '';\nelse if (msg.imageMessage)                 messageText = msg.imageMessage.caption || '';\nelse if (msg.documentMessage)              messageText = msg.documentMessage.caption || '';\nelse if (msg.videoMessage)                 messageText = msg.videoMessage.caption || '';\nmessageText = messageText.trim();\n\nconst isAudio    = ['audioMessage','pttMessage'].includes(messageType);\nconst isImage    = messageType === 'imageMessage';\nconst isDocument = messageType === 'documentMessage';\nconst isPdf      = isDocument && ((msg.documentMessage||{}).mimetype||'').toLowerCase().includes('pdf');\n\nconst mediaPayload = (isAudio || isImage || isDocument)\n  ? { key, message: msg }\n  : null;\n\nconst receivedAt = data.messageTimestamp\n  ? new Date(data.messageTimestamp * 1000).toISOString()\n  : new Date().toISOString();\n\nconst normalizedText = messageText.toLowerCase()\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g,'')\n  .trim();\n\nreturn [{ json: {\n  ...base,\n  raw_event:        rawEvent,\n  channel:          'whatsapp',\n  evo_instance:     rawEvent.instance || '',\n  phone_normalized: phoneNorm,\n  phone_jid:        remoteJid,\n  customer_name:    customerName,\n  customer_phone:   '+' + phoneNorm,\n  conversation_id:  'wa_' + phoneNorm,\n  message_text:     messageText,\n  normalized_text:  normalizedText,\n  message_type:     messageType,\n  is_audio:         isAudio,\n  is_image:         isImage,\n  is_document:      isDocument,\n  is_pdf:           isPdf,\n  media_payload:    mediaPayload,\n  received_at:      receivedAt\n} }];\n"
+      },
+      "id": "30f6d2c6-8b1b-43b7-b5ed-3b451914bbe0",
+      "name": "Normalizar Entrada WhatsApp",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        528,
+        -1584
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "ra",
+                    "leftValue": "={{ $json.is_audio }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "audio"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "ri",
+                    "leftValue": "={{ $json.is_image }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "imagem"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "rp",
+                    "leftValue": "={{ $json.is_pdf }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "pdf"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "5aa583a0-a98d-4fdc-8e67-7e9ffba18df0",
+      "name": "Detectar Tipo Midia",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        1648,
+        -1216
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVO_BASE_URL }}/chat/getBase64FromMediaMessage/{{ $env.EVO_INSTANCE }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVO_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { message: $json.media_payload } }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "ebb9b293-3121-48f4-8876-9a3f1e8713c2",
+      "name": "Baixar Audio Evolution",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1888,
+        -1712
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/audio/transcriptions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer SUACHAVE_OPENAI_AQUI"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "whisper-1"
+            }
+          ]
+        },
+        "options": {
+          "bodyContentType": "multipart-form-data"
+        },
+        "sendInputData": true,
+        "inputDataFieldName": "file"
+      },
+      "id": "7354e661-0c0b-4abc-ab0b-1f1fbb68d7f8",
+      "name": "OpenAI Transcricao",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        2112,
+        -1712
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst base       = $('Normalizar Entrada WhatsApp').item.json;\nconst configData = $('Montar Base1').item.json;\nconst parts      = (((($json||{}).candidates||[])[0]||{}).content||{}).parts||[];\nconst transcript = ((parts[0]||{}).text||'').trim();\nconst safe       = transcript || 'Não consegui transcrever o áudio. Pode enviar por texto, por favor?';\n\nreturn [{ json: {\n  ...base, ...configData,\n  message_text:    safe,\n  transcript_text: transcript || null,\n  normalized_text: safe.toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g,''),\n  last_input_type: 'audio'\n} }];\n"
+      },
+      "id": "1a5de96d-316a-4887-9b6d-c325f7df32fa",
+      "name": "Aplicar Transcricao",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2336,
+        -1712
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVO_BASE_URL }}/chat/getBase64FromMediaMessage/{{ $env.EVO_INSTANCE }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVO_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { message: $json.media_payload } }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "91c3c748-043d-458d-8525-1f8b3a431ddc",
+      "name": "Baixar Imagem Evolution",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1888,
+        -1504
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Processa resposta da visão (imagem)\nconst base     = $('Normalizar Entrada WhatsApp').item.json;\nconst respNode = $input.item.json; // saída do Gemini Visao Imagem\nlet rawText = '';\ntry { rawText = respNode.candidates[0].content.parts[0].text || ''; } catch(e) {}\nrawText = String(rawText || '').trim();\n\nconst splitPat = /\\s*,\\s*|\\s*;\\s*|\\n+/;\nlet names = rawText.split(splitPat).map(e=>e.trim()).filter(Boolean);\n\n// Normaliza compostos comuns\nlet normalized = [];\nfor (const exam of names) {\n  const e = exam.toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').trim();\n  if (e.includes('tgo') && e.includes('tgp'))                                     { normalized.push('TGO','TGP'); }\n  else if (e.includes('tsh') && e.includes('t4'))                                 { normalized.push('TSH','T4 Livre'); }\n  else if (e.includes('ureia') && e.includes('creatinina'))                       { normalized.push('Ureia','Creatinina'); }\n  else if (e.includes('colesterol total') && (e.includes('fracoes')||e.includes('frações'))) { normalized.push('Colesterol Total','HDL','LDL'); }\n  else if (e.includes('urina tipo i') || (e.includes('eas') && e.length <= 5))    { normalized.push('EAS'); }\n  else if (e.length >= 3)                                                          { normalized.push(exam); }\n}\n\nconst unique = [...new Set(normalized.map(e=>e.trim()).filter(Boolean))];\nconst examsText = unique.join(', ');\n\nconst configData = $('Montar Base1').item.json;\nconst enriched = unique.length > 0\n  ? `Tenho um pedido medico com os seguintes exames: ${examsText}. Quero saber o preparo e os valores.`\n  : '[Imagem recebida — exames não identificados com segurança]';\n\nconst replyText = unique.length > 0\n  ? `Recebi seu pedido médico! 🧬\\n\\nIdentifiquei os seguintes exames:\\n${unique.map(e=>'• '+e).join('\\n')}\\n\\nDeseja saber o *preparo*, os *valores* ou fazer o *agendamento*?`\n  : `Recebi a imagem do seu pedido médico, mas não consegui identificar os exames com segurança. Vou encaminhar para um atendente, tudo bem?`;\n\nreturn [{ json: {\n  ...base,\n  ...configData,\n  message_text:         enriched,\n  normalized_text:      enriched.toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').replace(/[^\\w\\s]/g,' ').trim(),\n  image_exams_extracted: rawText,\n  image_exams_list:     unique,\n  image_context_active: unique.length > 0,\n  last_input_type:      'image',\n  is_image_request:     true,\n  needs_human_review:   unique.length === 0,\n  ai_reply_override:    replyText\n} }];\n"
+      },
+      "id": "9ee33796-cee6-463e-8a40-5ab4b95fd7f0",
+      "name": "Processar Exames Imagem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2336,
+        -1504
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Processa resposta da visão para PDF — com fallback seguro\nconst base     = $('Normalizar Entrada WhatsApp').item.json;\nconst respNode = $input.item.json;\nlet rawText = '';\ntry { rawText = respNode.candidates[0].content.parts[0].text || ''; } catch(e) {}\nrawText = String(rawText || '').trim();\n\n// Heurísticas de baixa confiança\nconst UNCERTAINTY_PHRASES = [\n  'não consigo','nao consigo','não é possível','ilegível','ilegivel',\n  'não identificar','nao identificar','sem exames','qualidade insuficiente',\n  'não consigo ler','imagem de baixa qualidade','sem informação'\n];\nconst isLowConfidence =\n  rawText.length === 0 ||\n  rawText.length > 600 || // Gemini retornou texto demais — suspeito\n  UNCERTAINTY_PHRASES.some(p => rawText.toLowerCase().includes(p));\n\nif (isLowConfidence) {\n  const configData = $('Montar Base1').item.json;\n  return [{ json: {\n    ...base,\n    ...configData,\n    message_text:       '[PDF recebido — processamento automático indisponível]',\n    normalized_text:    'pdf recebido processamento automatico indisponivel',\n    last_input_type:    'pdf',\n    needs_human_review: true,\n    pdf_fallback:       true,\n    ai_reply_override:  'Recebi o seu PDF! Para garantir que todos os exames sejam identificados corretamente, vou encaminhar para um atendente revisar. Em breve entrarão em contato.',\n    // Força handoff direto\n    force_handoff:      true,\n    force_handoff_category: 'pdf_review'\n  } }];\n}\n\n// Processamento normal (igual ao de imagem)\nconst splitPat = /\\s*,\\s*|\\s*;\\s*|\\n+/;\nlet names = rawText.split(splitPat).map(e=>e.trim()).filter(Boolean);\nlet normalized = [];\nfor (const exam of names) {\n  const e = exam.toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').trim();\n  if (e.includes('tgo') && e.includes('tgp'))                                     { normalized.push('TGO','TGP'); }\n  else if (e.includes('tsh') && e.includes('t4'))                                 { normalized.push('TSH','T4 Livre'); }\n  else if (e.includes('ureia') && e.includes('creatinina'))                       { normalized.push('Ureia','Creatinina'); }\n  else if (e.includes('colesterol total') && (e.includes('fracoes')||e.includes('frações'))) { normalized.push('Colesterol Total','HDL','LDL'); }\n  else if (e.includes('urina tipo i') || (e.includes('eas') && e.length <= 5))    { normalized.push('EAS'); }\n  else if (e.length >= 3)                                                          { normalized.push(exam); }\n}\nconst unique = [...new Set(normalized.map(e=>e.trim()).filter(Boolean))];\n\nif (unique.length === 0) {\n  const configData = $('Montar Base1').item.json;\n  return [{ json: {\n    ...base, ...configData,\n    last_input_type: 'pdf', needs_human_review: true, pdf_fallback: true,\n    ai_reply_override: 'Não consegui identificar os exames no PDF enviado. Um atendente irá verificar manualmente.',\n    force_handoff: true, force_handoff_category: 'pdf_review'\n  } }];\n}\n\nconst examsText  = unique.join(', ');\nconst configData = $('Montar Base1').item.json;\nconst enriched   = `Tenho um pedido medico com os seguintes exames: ${examsText}. Quero saber o preparo e os valores.`;\nreturn [{ json: {\n  ...base, ...configData,\n  message_text: enriched,\n  normalized_text: enriched.toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').replace(/[^\\w\\s]/g,' ').trim(),\n  image_exams_extracted: rawText, image_exams_list: unique,\n  image_context_active: true, last_input_type: 'pdf',\n  ai_reply_override: `Recebi seu pedido (PDF)! 🧬\\n\\nExames identificados:\\n${unique.map(e=>'• '+e).join('\\n')}\\n\\nDeseja saber *preparo*, *valores* ou *agendamento*?`\n} }];\n"
+      },
+      "id": "8018cf11-a56c-493c-a9e8-6a74982f11e5",
+      "name": "Processar Exames PDF",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2336,
+        -1312
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst text = (item.normalized_text || '').trim();\nconst restricted = item.restricted_topics || ['beta hcg','sexagem fetal','dna'];\nconst ctx = item.conversation_context || {};\n\nconst has = (terms) => terms.some(t => text.includes(t));\n\nfunction norm(v) {\n  return String(v || '')\n    .toLowerCase()\n    .normalize('NFD')\n    .replace(/[\\u0300-\\u036f]/g, '')\n    .replace(/[?.,!;:]+$/g, '')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nfunction cleanExamName(v) {\n  return norm(v)\n    .replace(/^exame de\\s+/i, '')\n    .replace(/^exame\\s+/i, '')\n    .replace(/^um exame de\\s+/i, '')\n    .replace(/^um exame\\s+/i, '')\n    .replace(/^o exame de\\s+/i, '')\n    .replace(/^o exame\\s+/i, '')\n    .trim();\n}\n\nfunction normalizeExamAliases(v) {\n  const exam = cleanExamName(v);\n\n  if (!exam) return exam;\n  if (['urina simples', 'exame de urina simples', 'urina tipo 1', 'urina tipo i'].includes(exam)) return 'eas';\n  if (exam === 'beta-hcg') return 'beta hcg';\n  if (exam === 'rubela') return 'rubeola';\n  if (exam === 't4l') return 't4 livre';\n  if (exam === 'creatina') return 'creatinina';\n  if (exam === 'cbc') return 'hemograma completo';\n  if (exam === 'fosforo') return 'fosforo';\n\n  return exam;\n}\n\nconst GREETING_ONLY = [\n  'oi','ola','olá','bom dia','boa tarde','boa noite','tudo bem','hey','e ai','e aí'\n].map(norm);\n\nconst ACK_ONLY = [\n  'ok','certo','entendi','sim','beleza','perfeito','otimo','ótimo','combinado','blz','show','recebi'\n].map(norm);\n\nconst FAREWELL_ONLY = [\n  'tchau','obrigado','obrigada','ate logo','até logo','valeu','muito obrigado','muito obrigada'\n].map(norm);\n\nconst NON_EXAM_SHORT_MESSAGES = new Set([\n  ...GREETING_ONLY,\n  ...ACK_ONLY,\n  ...FAREWELL_ONLY\n]);\n\nfunction looksLikeStandaloneExamCandidate(value) {\n  const v = norm(value);\n  if (!v) return false;\n\n  if (NON_EXAM_SHORT_MESSAGES.has(v)) return false;\n\n  const blocked = [\n    'quero fazer',\n    'preciso fazer',\n    'gostaria de fazer',\n    'valor',\n    'preco',\n    'preço',\n    'orcamento',\n    'orçamento',\n    'agendamento',\n    'agendar',\n    'marcar',\n    'preparo',\n    'jejum',\n    'prazo',\n    'resultado',\n    'endereco',\n    'endereço',\n    'telefone',\n    'whatsapp',\n    'instagram',\n    'convenio',\n    'convênio',\n    'particular',\n    'na verdade',\n    'sao tres exames',\n    'são três exames',\n    'tres exames',\n    'três exames'\n  ].map(norm);\n\n  if (blocked.includes(v)) return false;\n\n  const knownShortExamForms = [\n    't3','t4','tsh','vdrl','eas','epf','hcg','beta hcg',\n    't3 livre','t4 livre','gama gt','tgo','tgp',\n    'urina simples','urina tipo 1','urina tipo i',\n    'calcio','cálcio','t4l','fosforo','fósforo'\n  ].map(norm);\n\n  if (knownShortExamForms.includes(v)) return true;\n\n  if (v.length <= 2) return false;\n  if (v.split(' ').length > 6) return false;\n\n  return /^[a-z0-9\\s\\-]{2,50}$/.test(v);\n}\n\nfunction detectAgent() {\n  const map = {\n    adriana: 'Adriana',\n    kaleby: 'Kaleby',\n    kaleb: 'Kaleb',\n    cida: 'Cida',\n    'dr omar': 'Dr. Omar',\n    'doutor omar': 'Dr. Omar',\n    omar: 'Dr. Omar'\n  };\n\n  for (const [alias, name] of Object.entries(map)) {\n    if (text.includes(alias)) return name;\n  }\n\n  return null;\n}\n\nfunction splitPotentialExams(value) {\n  const raw = String(value || '').trim();\n  if (!raw) return [];\n\n  const parts = [];\n  const lines = raw.replace(/\\r/g, '\\n').split('\\n');\n  \n  for (const line of lines) {\n    let cleaned = line.replace(/^[-•*]\\s*/g, '').replace(/^\\d+[.)-]?\\s*/g, '').trim();\n    \n    // Strip conversational intent prefixes\n    cleaned = cleaned.replace(/^(?:.*?)(?:quero|preciso|precisando|gostaria|vou)(?:.*?)(?:fazer|agendar|marcar|verificar)\\s+/i, '');\n    \n    cleaned = cleaned.replace(/\\b e \\b/gi, ',');\n    cleaned = cleaned.replace(/\\b ou \\b/gi, ',');\n    \n    cleaned.split(/\\s*,\\s*|\\s*;\\s*|\\s*\\/\\s*|\\s*\\+\\s*/g)\n      .map(v => v.trim())\n      .filter(Boolean)\n      .forEach(v => {\n        parts.push(v);\n        \n        // Extract what follows \"exame de...\" even if not at start\n        const match = v.match(/(?:exames?\\s+de\\s+)(.+)/i);\n        if (match && match[1]) {\n          parts.push(match[1].trim());\n        }\n        \n        const noPrefix = v.replace(/^(?:(?:um|uns|uma)\\s+)?exames?\\s+de\\s+/i, '').replace(/^(?:o\\s+)?exame\\s+/i, '');\n        if (noPrefix !== v) parts.push(noPrefix.trim());\n      });\n  }\n\n  return [...new Set(\n    parts\n      .map(v => normalizeExamAliases(v))\n      .filter(Boolean)\n      .filter(looksLikeStandaloneExamCandidate)\n  )];\n}\n\nfunction extractExamTerms() {\n  const terms = new Set();\n  const raw = String(item.message_text || item.mensagem_original || item.text || item.body || '').trim();\n  const rawNorm = norm(raw);\n\n  // 1) Linhas explícitas: \"Exame de Ureia\"\n  raw\n    .replace(/\\r/g, '\\n')\n    .split('\\n')\n    .map(v => v.trim())\n    .filter(Boolean)\n    .forEach(line => {\n      const cleanLine = line\n        .replace(/^[-•*]\\s*/g, '')\n        .replace(/^\\d+[.)-]?\\s*/g, '')\n        .trim();\n\n      if (/^exame de /i.test(cleanLine) || /^exame /i.test(cleanLine)) {\n        const cleaned = normalizeExamAliases(cleanLine);\n        if (looksLikeStandaloneExamCandidate(cleaned)) {\n          terms.add(cleaned);\n        }\n      }\n    });\n\n  // 2) Repetições \"um exame de X, um exame de Y, um exame de Z\"\n  const repeatedExamRegex = /(?:(?:um|uns|uma)\\s+)?exames?\\s+de\\s+([a-z\\u00e0-\\u00fa0-9\\s\\-\\/\\(\\)]+?)(?=(?:,|\\be\\b|\\bou\\b|\\n|$|(?:um|uns|uma)\\s+exames?\\s+de))/gi;\n  for (const m of raw.matchAll(repeatedExamRegex)) {\n    if (m[1]) {\n      const cleaned = normalizeExamAliases(m[1]);\n      if (looksLikeStandaloneExamCandidate(cleaned)) {\n        terms.add(cleaned);\n      }\n    }\n  }\n\n  // 3) \"quero fazer X, Y, Z\"\n  const listAfterIntentRegex = /(?:quero fazer|preciso fazer|gostaria de fazer|quero verificar|preciso verificar|gostaria de verificar)\\s+(.+)/i;\n  const intentMatch = raw.match(listAfterIntentRegex);\n  if (intentMatch && intentMatch[1]) {\n    splitPotentialExams(intentMatch[1]).forEach(term => {\n      if (looksLikeStandaloneExamCandidate(term)) terms.add(term);\n    });\n  }\n\n  // 4) Lista curta inteira\n  if (rawNorm && rawNorm.length <= 220) {\n    splitPotentialExams(raw).forEach(term => {\n      if (looksLikeStandaloneExamCandidate(term)) terms.add(term);\n    });\n  }\n\n  return [...terms];\n}\n\n// ── confirmação de exame ambíguo ─────────────────────────────\nif (ctx.collect_field === 'confirmar_exame') {\n  const options = Array.isArray(ctx.ambiguous_exam_options) ? ctx.ambiguous_exam_options : [];\n  const inputNorm = norm(text);\n\n  const matched = options.find(opt => {\n    const optNorm = norm(opt);\n    return optNorm === inputNorm || optNorm.includes(inputNorm) || inputNorm.includes(optNorm);\n  });\n\n  if (matched) {\n    return [{\n      json: {\n        ...item,\n        triage: {\n          intent: ctx.last_intent === 'agendamento' ? 'agendamento' : 'consulta_exame',\n          confidence: 0.99,\n          urgency: 'normal',\n          exam_name_raw: matched,\n          exam_names_list: [matched],\n          needs_human: false,\n          requested_agent_name: null,\n          reason_codes: ['ambiguous_exam_confirmed'],\n          signals: {\n            ambiguous_exam_confirmed: true\n          }\n        },\n        conversation_context: {\n          ...ctx,\n          collect_field: null,\n          ambiguous_exam_query: null,\n          ambiguous_exam_options: []\n        }\n      }\n    }];\n  }\n\n  return [{\n    json: {\n      ...item,\n      triage: {\n        intent: ctx.last_intent === 'agendamento' ? 'agendamento' : 'consulta_exame',\n        confidence: 0.85,\n        urgency: 'normal',\n        exam_name_raw: text,\n        exam_names_list: splitPotentialExams(text),\n        needs_human: false,\n        requested_agent_name: null,\n        reason_codes: ['ambiguous_exam_confirmation_retry'],\n        signals: {\n          ambiguous_exam_confirmation_retry: true\n        }\n      }\n    }\n  }];\n}\n\nconst hasImgCtx = Array.isArray(ctx.last_image_exams_list) && ctx.last_image_exams_list.length > 0;\nconst refersPrev = [\n  'esses','esses exames','esses ai','esses aí','da imagem','do pedido','desses exames'\n].includes(text);\n\nif (refersPrev && hasImgCtx) {\n  const examsText = ctx.last_image_exams_text || ctx.last_image_exams_list.join(', ');\n  return [{\n    json: {\n      ...item,\n      message_text: `Tenho um pedido medico com os seguintes exames: ${examsText}. Quero saber o preparo e os valores.`,\n      normalized_text: `tenho um pedido medico com os seguintes exames ${examsText} quero saber o preparo e os valores`\n        .toLowerCase()\n        .normalize('NFD')\n        .replace(/[\\u0300-\\u036f]/g, ''),\n      triage: {\n        intent: 'preparo_e_valor',\n        confidence: 0.96,\n        urgency: 'normal',\n        exam_name_raw: ctx.last_image_exams_list[0] || examsText,\n        exam_names_list: ctx.last_image_exams_list,\n        needs_human: false,\n        requested_agent_name: null,\n        reason_codes: ['image_ctx_reused'],\n        signals: {}\n      }\n    }\n  }];\n}\n\nconst s = {\n  mentions_restricted: has(restricted),\n  asks_human: has([\n    'quero falar com atendente','falar com atendente','chamar atendente',\n    'atendimento humano','falar com alguem','falar com uma pessoa',\n    'me passa para atendente','chama atendente'\n  ]),\n  asks_named_agent: Boolean(detectAgent()),\n  complaint: has(['reclamacao','reclamar','insatisfeito','insatisfeita','pessimo','horrivel','vergonha']),\n  asks_result: has(['resultado','ficou pronto','laudo','pegar resultado','meu resultado']),\n  asks_schedule: has([\n    'agendar','marcar','agenda','quero marcar','quero agendar','como agendar','horario disponivel'\n  ]),\n  asks_do_exam: has([\n    'quero fazer exame','quero fazer um exame','fazer exame','fazer um exame',\n    'quero fazer','preciso fazer exame','meu medico me passou','meu médico me passou'\n  ]),\n  asks_total_price: has([\n    'valor total','preco total','total dos exames','quanto fica tudo',\n    'total geral','valor final','qual o total','qual o total dos dois','soma dos exames'\n  ]),\n  asks_price: has([\n    'preco','valor','custa','quanto custa','quanto e','qual o valor',\n    'qual o preco','quanto fica','tabela de precos','valores dos exames','valor dos exames',\n    'orcamento','orçamento'\n  ]),\n  asks_convenio: has([\n    'convenio','plano de saude','plano','unimed','bradesco saude','aceita plano',\n    'faz pelo plano','ipasgo','cassi','caesan','postal saude','itau saude'\n  ]),\n  asks_prep: has([\n    'preparo','jejum','como fazer o exame','preciso de jejum','o que preciso fazer',\n    'posso comer antes','tem preparo','qual o preparo'\n  ]),\n  asks_generic_blood_fasting: has([\n    'exame de sangue qual o jejum',\n    'exame de sangue qual o preparo',\n    'para fazer exame de sangue qual o jejum',\n    'para exame de sangue precisa de jejum',\n    'exame de sangue precisa de jejum',\n    'qual jejum para exame de sangue',\n    'jejum para exame de sangue',\n    'precisa de jejum para exame de sangue'\n  ]),\n  asks_turnaround: has([\n    'prazo','quanto tempo demora','quando fica pronto','quantos dias',\n    'quando sai o resultado','entrega no mesmo dia'\n  ]),\n  asks_hours: has([\n    'horario','horarios','hora de coleta','funciona','abre','fecha',\n    'que horas','horario de funcionamento','quando abre','quando fecha'\n  ]),\n  asks_address: has([\n    'endereco','onde fica','localizacao','como chegar','qual o endereco','onde voces ficam'\n  ]),\n  asks_contact: has(['telefone','whatsapp','email','instagram','contato','numero']),\n  asks_catalog: has([\n    'qual tipo de exame','quais exames','que exames','tipos de exame',\n    'fazem exame de','exames disponiveis','que servicos'\n  ]),\n  asks_collection_home: has([\n    'coleta em casa',\n    'coleta domiciliar',\n    'em domicilio',\n    'em domicílio',\n    'fazer em casa',\n    'faz coleta em casa',\n    'coleta na minha casa',\n    'colher em casa',\n    'vai em casa',\n    'vocês vão em casa',\n    'voces vao em casa',\n    'atendimento em casa'\n  ]),\n  asks_collection: has([\n    'coleta',\n    'coletar',\n    'coleta em casa',\n    'coleta domiciliar',\n    'coleta na clinica',\n    'coleta na clínica'\n  ]),\n  unsure_exam: has([\n    'nao sei o nome do exame','nao sei qual exame','nao lembro o nome','exame la','aquele exame'\n  ]),\n  is_greeting: has(['ola','oi','bom dia','boa tarde','boa noite','tudo bem','como vai','hey']),\n  is_ack: has(['ok','certo','entendi','sim','beleza','perfeito','otimo','combinado','blz','show','recebi']),\n  is_farewell: has(['tchau','obrigado','obrigada','ate logo','valeu','muito obrigado'])\n};\n\nconst agent = detectAgent();\n\nconst extractedExamTerms = extractExamTerms();\nconst contextExamNamesList = Array.isArray(ctx.last_exam_names_list) ? ctx.last_exam_names_list : [];\nconst normalizedContextExamNamesList = contextExamNamesList.map(v => normalizeExamAliases(v)).filter(Boolean);\n\nlet exam_names_list = [...new Set(extractedExamTerms)];\n\nif (!exam_names_list.length && hasImgCtx) {\n  exam_names_list = [...new Set((ctx.last_image_exams_list || []).map(v => normalizeExamAliases(v)).filter(Boolean))];\n}\n\nconst hasExamContext = Boolean(ctx.last_exam_name_raw) || normalizedContextExamNamesList.length > 0;\nconst examContextName = ctx.last_exam_name_raw || null;\n\nconst isDatePattern = /\\d{1,2}[\\/\\-]\\d{1,2}(?:[\\/\\-]\\d{2,4})?/.test(text);\nconst isTimePattern = /\\b\\d{1,2}h\\b|\\b\\d{1,2}:\\d{2}\\b/.test(text);\nconst isDayKeyword = /\\b(segunda|terca|terça|terca-feira|terça-feira|quarta|quinta|sexta|sabado|sábado|domingo|amanha|amanhã|hoje|proxima|próxima|semana que vem)\\b/.test(text);\nconst isShortReply = text.length > 0 && text.length <= 160;\n\nconst schedulingCollectFields = [\n  'nome_completo',\n  'nome_exame',\n  'data_preferida',\n  'horario_preferido',\n  'tipo_coleta',\n  'endereco_coleta',\n  'telefone_contato',\n  'confirmar_pedido_agendamento',\n  'ajuste_pedido'\n];\n\nconst explicitSchedulingContext =\n  ctx.last_intent === 'agendamento' &&\n  schedulingCollectFields.includes(ctx.collect_field || '') &&\n  !s.mentions_restricted &&\n  !s.complaint &&\n  !s.asks_human &&\n  !s.asks_named_agent &&\n  !s.is_farewell;\n\nconst looksLikeDateOrTime =\n  isDatePattern ||\n  isTimePattern ||\n  isDayKeyword;\n\nconst looksLikeExamReplyInScheduling =\n  explicitSchedulingContext &&\n  (ctx.collect_field === 'nome_exame') &&\n  (\n    exam_names_list.length > 0 ||\n    hasExamContext\n  );\n\nconst shouldStayInScheduling =\n  explicitSchedulingContext &&\n  (\n    looksLikeDateOrTime ||\n    s.is_ack ||\n    looksLikeExamReplyInScheduling ||\n    (isShortReply && !s.asks_price && !s.asks_prep && !s.asks_turnaround)\n  );\n\nconst isExamFollowUp =\n  hasExamContext &&\n  !s.asks_schedule &&\n  !s.asks_collection_home &&\n  !explicitSchedulingContext &&\n  !s.mentions_restricted &&\n  !s.complaint &&\n  !s.asks_human &&\n  !s.asks_named_agent &&\n  (\n    s.asks_price ||\n    s.asks_prep ||\n    s.asks_total_price ||\n    s.asks_turnaround ||\n    text === 'qual o valor' ||\n    text === 'valor' ||\n    text === 'preco' ||\n    text === 'preço' ||\n    text === 'qual o preparo' ||\n    text === 'precisa de jejum' ||\n    text === 'tem jejum' ||\n    text === 'qual o prazo'\n  );\n\nif (looksLikeExamReplyInScheduling) {\n  return [{\n    json: {\n      ...item,\n      triage: {\n        intent: 'agendamento',\n        confidence: 0.98,\n        urgency: 'normal',\n        exam_name_raw: exam_names_list[0] || examContextName || normalizedContextExamNamesList[0] || null,\n        exam_names_list: exam_names_list.length ? exam_names_list : (normalizedContextExamNamesList.length ? normalizedContextExamNamesList : (examContextName ? [examContextName] : [])),\n        needs_human: false,\n        requested_agent_name: null,\n        reason_codes: ['scheduling_exam_reply'],\n        signals: {\n          ...s,\n          scheduling_exam_reply: true\n        }\n      }\n    }\n  }];\n}\n\nif (isExamFollowUp) {\n  let followIntent = 'valor';\n\n  if (s.asks_prep && s.asks_price) followIntent = 'preparo_e_valor';\n  else if (s.asks_prep) followIntent = 'preparo_exame';\n  else if (s.asks_total_price) followIntent = 'valor_total';\n  else if (s.asks_turnaround) followIntent = 'prazo';\n  else if (s.asks_price) followIntent = 'valor';\n\n  return [{\n    json: {\n      ...item,\n      triage: {\n        intent: followIntent,\n        confidence: 0.97,\n        urgency: 'normal',\n        exam_name_raw: examContextName || normalizedContextExamNamesList[0] || null,\n        exam_names_list: normalizedContextExamNamesList.length ? normalizedContextExamNamesList : (examContextName ? [examContextName] : []),\n        needs_human: false,\n        requested_agent_name: null,\n        reason_codes: ['exam_context_follow_up'],\n        signals: {\n          ...s,\n          exam_context_follow_up: true\n        }\n      }\n    }\n  }];\n}\n\nconst reasons = [];\nlet intent = 'desconhecido';\nlet conf = 0.55;\n\nconst asksHomeCollectionAndSchedule =\n  s.asks_collection_home &&\n  (s.asks_schedule || looksLikeDateOrTime || has(['quero','preciso','gostaria']));\n\nconst mixedPriceAndSchedule =\n  (s.asks_price || s.asks_total_price) &&\n  (s.asks_schedule || looksLikeDateOrTime);\n\nif (s.mentions_restricted) {\n  intent = 'restrito';\n  conf = 0.99;\n  reasons.push('restricted_topic');\n}\nelse if (s.complaint) {\n  intent = 'reclamacao';\n  conf = 0.97;\n  reasons.push('complaint');\n}\nelse if (s.asks_human || s.asks_named_agent) {\n  intent = 'humano';\n  conf = 0.96;\n  reasons.push('human_requested');\n  if (agent) reasons.push('named_agent');\n}\nelse if (s.unsure_exam) {\n  intent = 'duvida_nome_exame';\n  conf = 0.92;\n  reasons.push('exam_name_uncertain');\n}\nelse if (s.asks_result) {\n  intent = 'resultado';\n  conf = 0.93;\n  reasons.push('result_detected');\n}\nelse if (shouldStayInScheduling) {\n  intent = 'agendamento';\n  conf = 0.98;\n  reasons.push('scheduling_ctx_follow_up');\n}\nelse if (ctx.last_intent === 'coleta_domiciliar' && (s.is_ack || s.asks_schedule || s.asks_do_exam || has(['quero', 'pode sim', 'pode seguir']))) {\n  intent = 'agendamento';\n  conf = 0.95;\n  reasons.push('agendamento_from_info');\n}\nelse if (asksHomeCollectionAndSchedule) {\n  intent = 'agendamento';\n  conf = 0.97;\n  reasons.push('home_collection_schedule');\n}\nelse if (s.asks_collection_home) {\n  intent = 'coleta_domiciliar';\n  conf = 0.97;\n  reasons.push('home_collection_info');\n}\nelse if (mixedPriceAndSchedule) {\n  intent = 'agendamento';\n  conf = 0.96;\n  reasons.push('mixed_price_and_schedule');\n}\nelse if (s.asks_schedule) {\n  intent = 'agendamento';\n  conf = 0.92;\n  reasons.push('scheduling');\n}\nelse if (s.asks_prep && s.asks_total_price) {\n  intent = 'preparo_e_valor_total';\n  conf = 0.95;\n  reasons.push('prep_and_total');\n}\nelse if (s.asks_total_price) {\n  intent = 'valor_total';\n  conf = 0.94;\n  reasons.push('total_price');\n}\nelse if (s.asks_prep && s.asks_price) {\n  intent = 'preparo_e_valor';\n  conf = 0.93;\n  reasons.push('prep_and_price');\n}\nelse if (s.asks_generic_blood_fasting) {\n  intent = 'preparo_generico_sangue';\n  conf = 0.95;\n  reasons.push('generic_blood_fasting');\n}\nelse if (s.asks_prep) {\n  intent = 'preparo_exame';\n  conf = 0.90;\n  reasons.push('prep');\n}\nelse if (s.asks_price) {\n  intent = 'valor';\n  conf = 0.92;\n  reasons.push('price');\n}\nelse if (s.asks_turnaround) {\n  intent = 'prazo';\n  conf = 0.86;\n  reasons.push('turnaround');\n}\nelse if (s.asks_convenio) {\n  intent = 'convenio';\n  conf = 0.91;\n  reasons.push('insurance');\n}\nelse if (s.asks_hours) {\n  intent = 'horario';\n  conf = 0.94;\n  reasons.push('hours');\n}\nelse if (s.asks_address) {\n  intent = 'endereco';\n  conf = 0.93;\n  reasons.push('address');\n}\nelse if (s.asks_contact || s.asks_catalog || s.asks_collection) {\n  intent = 'institucional';\n  conf = 0.92;\n  reasons.push('institutional');\n}\nelse if (exam_names_list.length > 0 && (s.asks_do_exam || text.length <= 220)) {\n  intent = explicitSchedulingContext ? 'agendamento' : 'consulta_exame';\n  conf = exam_names_list.length > 1 ? 0.96 : 0.91;\n  reasons.push(explicitSchedulingContext ? 'scheduling_exam_continuation' : (exam_names_list.length > 1 ? 'multi_exam_query' : 'direct_exam_query'));\n}\nelse if (s.is_greeting || s.is_ack) {\n  intent = 'saudacao';\n  conf = 0.95;\n  reasons.push('greeting');\n}\nelse if (s.is_farewell) {\n  intent = 'despedida';\n  conf = 0.94;\n  reasons.push('farewell');\n}\nelse if (isShortReply && explicitSchedulingContext && looksLikeDateOrTime) {\n  intent = 'agendamento';\n  conf = 0.88;\n  reasons.push('scheduling_short_follow_up');\n}\n\nif (exam_names_list.length > 0) {\n  reasons.push('exam_names_extracted');\n}\n\nconst exam_name_raw =\n  exam_names_list[0] ||\n  examContextName ||\n  normalizedContextExamNamesList[0] ||\n  null;\n\nconst final_exam_names_list =\n  exam_names_list.length > 0\n    ? exam_names_list\n    : (\n        normalizedContextExamNamesList.length > 0\n          ? normalizedContextExamNamesList\n          : (examContextName ? [examContextName] : [])\n      );\n\nconst needs_human =\n  s.mentions_restricted ||\n  s.complaint ||\n  s.asks_human ||\n  s.asks_named_agent ||\n  s.unsure_exam ||\n  s.asks_result;\n\nreturn [{\n  json: {\n    ...item,\n    triage: {\n      intent,\n      confidence: conf,\n      urgency: s.complaint ? 'high' : 'normal',\n      exam_name_raw,\n      exam_names_list: final_exam_names_list,\n      needs_human,\n      requested_agent_name: agent,\n      reason_codes: reasons,\n      signals: {\n        ...s,\n        multi_exam_detected: final_exam_names_list.length > 1,\n        home_collection_detected: s.asks_collection_home\n      }\n    }\n  }\n}];"
+      },
+      "id": "733e3c98-8931-40a0-8317-d0ebf3d01227",
+      "name": "Subagente de Triagem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2720,
+        -1136
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json || {};\nconst triage = item.triage || {};\n\nlet intent = triage.intent || 'desconhecido';\nlet confidence = typeof triage.confidence === 'number' ? triage.confidence : 0.75;\nlet decision = 'answer';\nlet target_agent = 'institutional_agent';\nlet clarification_question = null;\nlet requested_agent_name = triage.requested_agent_name || null;\nlet reason_codes = Array.isArray(triage.reason_codes) ? [...triage.reason_codes] : [];\n\nconst needsHuman = Boolean(triage.needs_human || triage.requiresHuman);\n\nif (needsHuman) {\n  decision = 'handoff';\n  target_agent = null;\n  reason_codes.push('triage_requested_handoff');\n} else if (intent === 'desconhecido') {\n  decision = 'clarify';\n  target_agent = null;\n  clarification_question = 'Posso te ajudar com exames, preparo, valores, agendamento, horários ou endereço. O que você deseja?';\n  reason_codes.push('unknown_intent');\n} else if ([\n  'saudacao',\n  'despedida',\n  'horario',\n  'endereco',\n  'institucional',\n  'convenio',\n  'cadastro',\n  'coleta',\n  'coleta_domiciliar'\n].includes(intent)) {\n  decision = 'answer';\n  target_agent = 'institutional_agent';\n  reason_codes.push('route_institutional');\n} else if ([\n  'consulta_exame',\n  'preparo_exame',\n  'preparo_e_valor',\n  'preparo_e_valor_total',\n  'valor',\n  'valor_total',\n  'prazo',\n  'orcamento'\n].includes(intent)) {\n  decision = 'answer';\n  target_agent = 'exam_prep_agent';\n  reason_codes.push('route_exam_prep');\n} else if (['agendamento'].includes(intent)) {\n  decision = 'answer';\n  target_agent = 'scheduling_agent';\n  reason_codes.push('route_scheduling');\n} else {\n  decision = 'answer';\n  target_agent = 'institutional_agent';\n  reason_codes.push('route_default_institutional');\n}\n\nreturn [{\n  json: {\n    ...item,\n    orchestration: {\n      intent,\n      decision,\n      target_agent,\n      confidence,\n      clarification_question,\n      requested_agent_name,\n      reason_codes\n    }\n  }\n}];"
+      },
+      "id": "901a47d2-635d-48e2-8d30-1687433877b3",
+      "name": "Agente Orquestrador",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2864,
+        -1472
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "rh",
+                    "leftValue": "={{ $json.orchestration.decision }}",
+                    "rightValue": "handoff",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "handoff"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "rc",
+                    "leftValue": "={{ $json.orchestration.decision }}",
+                    "rightValue": "clarify",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "clarificacao"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "rd",
+                    "leftValue": "={{ $json.orchestration.decision }}",
+                    "rightValue": "answer",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "delegar"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b05fe2a3-6e6d-48b7-ab27-85c3f1f3e1bd",
+      "name": "Switch Decisao",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        3120,
+        -1488
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst item      = $input.item.json;\nconst templates = item.handoff_templates || ['Esse atendimento precisa ser conduzido por um atendente da Bio Análise. Vou encaminhar sua solicitação, tudo bem?'];\nconst orch      = item.orchestration || {};\nconst t         = item.triage || {};\nconst reasons   = orch.reason_codes || [];\n\nlet cat = 'general_handoff';\nif (reasons.some(r=>r.includes('restricted')))   cat='restricted_exam';\nelse if (reasons.some(r=>r.includes('complaint'))) cat='complaint';\nelse if (reasons.some(r=>r.includes('result')))  cat='exam_result';\nelse if (reasons.some(r=>r.includes('human')))   cat='human_request';\nelse if (reasons.some(r=>r.includes('unsure')))  cat='exam_name_unclear';\nelse if (reasons.some(r=>r.includes('pdf')))     cat='pdf_review';\n\nconst idx = String(item.phone_normalized||'0').split('').reduce((a,c)=>a+c.charCodeAt(0),0) % templates.length;\n\nconst handoff_record = {\n  conversation_id:  item.conversation_id,\n  created_at:       new Date().toISOString(),\n  patient_name:     item.customer_name || null,\n  patient_phone:    item.customer_phone || null,\n  canal:            'whatsapp',\n  categoria:        cat,\n  reason_codes:     reasons,\n  agente_solicitado: orch.requested_agent_name || t.requested_agent_name || null,\n  status:           'pending'\n};\n\nreturn [{ json: { ...item, handoff_record, response: {\n  status: 'handoff_ready', subagent: 'human_handoff_agent',\n  reply: templates[idx], handoff: true, handoff_category: cat,\n  queue_tags: ['human_handoff', cat], reason_codes: reasons\n} } }];\n"
+      },
+      "id": "f808d8ed-502d-49ae-a01e-22b7278e1641",
+      "name": "Subagente Handoff",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3856,
+        -1664
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ { handoff_record:null, response:{ status:'need_clarification', subagent:'clarification_agent', reply:($json.orchestration?$json.orchestration.clarification_question:null)||'Posso ajudar com preparo, valores, horários, endereço ou agendamento. O que deseja?', handoff:false, handoff_category:null, queue_tags:[], reason_codes:($json.orchestration?$json.orchestration.reason_codes:null)||[] } } }}",
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "d772ac59-c102-4881-9bf6-74ec70fd9a51",
+      "name": "Montar Clarificacao",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3392,
+        -1456
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "ri",
+                    "leftValue": "={{ $json.orchestration.target_agent }}",
+                    "rightValue": "institutional_agent",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "institucional"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "re",
+                    "leftValue": "={{ $json.orchestration.target_agent }}",
+                    "rightValue": "exam_prep_agent",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "exames"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "id": "ra",
+                    "leftValue": "={{ $json.orchestration.target_agent }}",
+                    "rightValue": "scheduling_agent",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "agendamento"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "344a5522-ca49-4733-8436-da1468cc4b5e",
+      "name": "Switch Intent",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        3392,
+        -1264
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json || {};\nconst p = item.clinic_profile || {};\nconst t = item.triage || {};\nconst orch = item.orchestration || {};\nconst ctx = item.conversation_context || {};\n\nconst finalIntent = orch.intent || t.intent || null;\n\nconst primeiroNome =\n  item.customer_name &&\n  item.customer_name !== 'Cliente WhatsApp'\n    ? item.customer_name.split(' ')[0]\n    : null;\n\nconst nome = primeiroNome ? `, ${primeiroNome}` : '';\n\nconst textoOriginal = String(item.message_text || '').trim();\nconst texto = textoOriginal\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '')\n  .toLowerCase()\n  .replace(/\\s+/g, ' ')\n  .trim();\n\nfunction saudacaoHorario() {\n  const agora = new Date();\n  const hora = agora.getHours();\n\n  if (hora >= 5 && hora < 12) return 'Bom dia';\n  if (hora >= 12 && hora < 18) return 'Boa tarde';\n  return 'Boa noite';\n}\n\nconst cumprimento = saudacaoHorario();\n\nconst conversaEmAndamento =\n  Boolean(ctx.last_intent) &&\n  !['saudacao', 'despedida'].includes(ctx.last_intent || '');\n\nfunction respostaSaudacao() {\n  if (texto.includes('bom dia')) {\n    return `Bom dia${nome}! Aqui é da *Bio Análise* 🧬\\n\\nComo posso te ajudar hoje?`;\n  }\n\n  if (texto.includes('boa tarde')) {\n    return `Boa tarde${nome}! Aqui é da *Bio Análise* 🧬\\n\\nComo posso te ajudar hoje?`;\n  }\n\n  if (texto.includes('boa noite')) {\n    return `Boa noite${nome}! Aqui é da *Bio Análise* 🧬\\n\\nComo posso te ajudar hoje?`;\n  }\n\n  if (conversaEmAndamento) {\n    return `Olá${nome}! Como posso te ajudar agora?`;\n  }\n\n  return `${cumprimento}${nome}! Aqui é da *Bio Análise* 🧬\\n\\nComo posso te ajudar hoje?`;\n}\n\nfunction respostaDespedida() {\n  return `Nós que agradecemos${nome}. Ficamos à disposição sempre que precisar. 🧬`;\n}\n\nfunction getHorarioColeta() {\n  const hc = p.horario_coleta || {};\n  return {\n    seg: hc.monday_to_friday || '06:30 às 16:00',\n    sab: hc.saturday || '07:00 às 09:00',\n    dom: hc.sunday || null\n  };\n}\n\nfunction getAmanhaInfo() {\n  const agora = new Date();\n  const amanha = new Date(agora);\n  amanha.setDate(agora.getDate() + 1);\n  return amanha.getDay();\n}\n\nfunction respostaHorario() {\n  const { seg, sab } = getHorarioColeta();\n\n  if (\n    texto.includes('domingo') &&\n    (texto.includes('fechado') || texto.includes('abre') || texto.includes('funciona'))\n  ) {\n    return `Sim, aos domingos a Bio Análise está fechada.`;\n  }\n\n  if (texto.includes('amanha') || texto.includes('amanhã')) {\n    const dia = getAmanhaInfo();\n\n    if (dia === 0) {\n      return `Amanhã, domingo, a Bio Análise estará fechada.`;\n    }\n\n    if (dia === 6) {\n      return `Amanhã, sábado, o horário de coleta será das *${sab}*.`;\n    }\n\n    return `Amanhã, o horário de coleta será das *${seg}*.`;\n  }\n\n  if (texto.includes('sabado') || texto.includes('sábado')) {\n    return `Aos sábados, o horário de coleta da Bio Análise é das *${sab}*.`;\n  }\n\n  if (\n    texto.includes('segunda') ||\n    texto.includes('terca') ||\n    texto.includes('terça') ||\n    texto.includes('quarta') ||\n    texto.includes('quinta') ||\n    texto.includes('sexta')\n  ) {\n    return `De segunda a sexta, o horário de coleta da Bio Análise é das *${seg}*.`;\n  }\n\n  return `Os *horários de coleta* da Bio Análise são:\\n• Segunda a sexta: ${seg}\\n• Sábado: ${sab}\\n• Domingo: fechado\\n\\n📍 ${p.main_address || 'Av. Pará, nº 365, Centro, Iporá-GO'}\\n📞 ${p.main_phone || '(64) 3603-1306'}`;\n}\n\nfunction respostaEndereco() {\n  return `A *Bio Análise* fica em:\\n📍 ${p.main_address || 'Av. Pará, nº 365, Centro, Iporá-GO'}\\n\\n📞 ${p.main_phone || '(64) 3603-1306'}\\n\\nSe quiser, também posso te informar os horários de coleta.`;\n}\n\nfunction respostaContato() {\n  return `Esses são os canais de contato da *Bio Análise*:\\n📞 Telefone / WhatsApp: ${p.main_phone || '(64) 3603-1306'}\\n📧 E-mail: ${p.corporate_email || 'bioanaliselab@bol.com.br'}\\n📍 Endereço: ${p.main_address || 'Av. Pará, nº 365, Centro, Iporá-GO'}`;\n}\n\nfunction respostaConvenio() {\n  const convenios = Array.isArray(p.convenios) ? p.convenios : [];\n\n  if (!convenios.length) {\n    return `Para confirmar os convênios atendidos no momento, o ideal é falar com nossa equipe pelo telefone ${p.main_phone || '(64) 3603-1306'}.`;\n  }\n\n  return `Atualmente, a Bio Análise trabalha com estes convênios:\\n• ${convenios.join('\\n• ')}\\n\\nSe quiser, também posso te orientar sobre exames particulares e agendamentos.`;\n}\n\nfunction respostaCadastro() {\n  return `Para verificar seu cadastro na Bio Análise, nossa equipe precisa confirmar seus dados. Você pode nos informar seu *nome completo* e *CPF* ou, se preferir, falar diretamente pelo telefone ${p.main_phone || '(64) 3603-1306'}.`;\n}\n\nfunction respostaColetaDomiciliar() {\n  const { seg, sab } = getHorarioColeta();\n\n  const fazDomicilio = true;\n\n  if (!fazDomicilio) {\n    return `No momento, a Bio Análise não realiza coleta domiciliar. As coletas são feitas na unidade, nos seguintes horários:\\n• Segunda a sexta: *${seg}*\\n• Sábado: *${sab}*`;\n  }\n\n  const querAgendar =\n    texto.includes('agendar') ||\n    texto.includes('marcar') ||\n    texto.includes('quero') ||\n    texto.includes('preciso');\n\n  const replyBase =\n    `A Bio Análise *realiza coleta domiciliar*, mediante *agendamento prévio*.\\n\\n` +\n    `📌 Como funciona:\\n` +\n    `• a solicitação precisa ser confirmada pela equipe;\\n` +\n    `• avaliamos disponibilidade de agenda;\\n` +\n    `• confirmamos os exames solicitados, endereço e melhor horário;\\n` +\n    `• os horários seguem nossa janela de coleta.\\n\\n` +\n    `🕒 Horários de coleta:\\n` +\n    `• Segunda a sexta: *${seg}*\\n` +\n    `• Sábado: *${sab}*\\n` +\n    `• Domingo: *fechado*`;\n\n  if (querAgendar) {\n    return `${replyBase}\\n\\nSe desejar, já posso dar andamento ao *agendamento da coleta domiciliar*.`;\n  }\n\n  return `${replyBase}\\n\\nSe quiser, também posso seguir com o *agendamento da coleta em casa*.`;\n}\n\nconst isColetaDomiciliarIntent =\n  finalIntent === 'coleta_domiciliar' ||\n  finalIntent === 'coleta' ||\n  texto.includes('coleta em casa') ||\n  texto.includes('coleta domiciliar') ||\n  texto.includes('em domicilio') ||\n  texto.includes('em domicílio') ||\n  texto.includes('faz coleta em casa') ||\n  texto.includes('coleta na minha casa') ||\n  texto.includes('colher em casa');\n\nif (finalIntent === 'saudacao') {\n  return [{\n    json: {\n      ...item,\n      active_subagent: 'institutional_agent',\n      ai_reply_override: respostaSaudacao(),\n      safe_data: {}\n    }\n  }];\n}\n\nif (finalIntent === 'despedida') {\n  return [{\n    json: {\n      ...item,\n      active_subagent: 'institutional_agent',\n      ai_reply_override: respostaDespedida(),\n      safe_data: {}\n    }\n  }];\n}\n\nif (finalIntent === 'horario' || finalIntent === 'horario_funcionamento') {\n  return [{\n    json: {\n      ...item,\n      active_subagent: 'institutional_agent',\n      ai_reply_override: respostaHorario(),\n      safe_data: {}\n    }\n  }];\n}\n\nif (finalIntent === 'endereco') {\n  return [{\n    json: {\n      ...item,\n      active_subagent: 'institutional_agent',\n      ai_reply_override: respostaEndereco(),\n      safe_data: {}\n    }\n  }];\n}\n\nif (finalIntent === 'convenio') {\n  return [{\n    json: {\n      ...item,\n      active_subagent: 'institutional_agent',\n      ai_reply_override: respostaConvenio(),\n      safe_data: {}\n    }\n  }];\n}\n\nif (finalIntent === 'cadastro') {\n  return [{\n    json: {\n      ...item,\n      active_subagent: 'institutional_agent',\n      ai_reply_override: respostaCadastro(),\n      safe_data: {}\n    }\n  }];\n}\n\nif (finalIntent === 'institucional') {\n  return [{\n    json: {\n      ...item,\n      active_subagent: 'institutional_agent',\n      ai_reply_override: respostaContato(),\n      safe_data: {}\n    }\n  }];\n}\n\nif (isColetaDomiciliarIntent) {\n  return [{\n    json: {\n      ...item,\n      active_subagent: 'institutional_agent',\n      ai_reply_override: respostaColetaDomiciliar(),\n      safe_data: {\n        coleta_domiciliar: true,\n        agendamento_previo: true,\n        horario_coleta: p.horario_coleta || null\n      }\n    }\n  }];\n}\n\nconst safe_data = {\n  brand_name: p.brand_name,\n  main_address: p.main_address,\n  city: p.city,\n  main_phone: p.main_phone,\n  corporate_email: p.corporate_email,\n  instagram: p.instagram,\n  horario_coleta: p.horario_coleta,\n  horario_atendimento: p.horario_atendimento,\n  horario_resultados: p.horario_resultados,\n  convenios: p.convenios,\n  payment: p.payment,\n  human_agents: p.human_agents,\n  cumprimento,\n  primeiro_nome: primeiroNome,\n  conversa_em_andamento: conversaEmAndamento,\n  coleta_domiciliar: true,\n  agendamento_previo: true\n};\n\nreturn [{\n  json: {\n    ...item,\n    active_subagent: 'institutional_agent',\n    safe_data,\n    llm_context_goal: 'Responda como uma atendente humana de clínica, com tom acolhedor, educado e profissional. Seja natural, breve e simpática, sem parecer robótica.'\n  }\n}];"
+      },
+      "id": "4c5be755-dd92-420b-a496-1e6e46cf61ce",
+      "name": "Subagente Institucional",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        -1360
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = items[0]?.json || {};\nconst triage = input.triage || {};\nconst ctx = input.conversation_context || {};\nconst examCatalog = Array.isArray(input.exam_catalog) ? input.exam_catalog : [];\n\nconst mensagemOriginal =\n  input.message_text ||\n  input.mensagem_original ||\n  input.mensagem_usuario ||\n  input.message ||\n  input.text ||\n  input.body ||\n  input.content ||\n  '';\n\nfunction norm(v) {\n  return String(v || '')\n    .normalize('NFD')\n    .replace(/[\\u0300-\\u036f]/g, '')\n    .toLowerCase()\n    .replace(/[^\\w\\s]/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nfunction normalizeExamText(v) {\n  let t = norm(v);\n\n  const replacements = [\n    [/\\bcreatina\\b/g, 'creatinina'],\n    [/\\bcreatin\\b/g, 'creatinina'],\n    [/\\bhemograma\\b/g, 'hemograma completo'],\n    [/\\bcbc\\b/g, 'hemograma completo'],\n    [/\\bfero\\b/g, 'ferro'],\n    [/\\brubela\\b/g, 'rubeola'],\n    [/\\burina simples\\b/g, 'eas'],\n    [/\\bexame de urina simples\\b/g, 'eas'],\n    [/\\bexame de urina\\b/g, 'eas'],\n    [/\\burina tipo 1\\b/g, 'eas'],\n    [/\\burina tipo i\\b/g, 'eas'],\n    [/\\beas\\b/g, 'eas'],\n    [/\\bbeta-hcg\\b/g, 'beta hcg'],\n    [/\\bbetahcg\\b/g, 'beta hcg'],\n    [/\\bt4l\\b/g, 't4 livre'],\n    [/\\bt3l\\b/g, 't3 livre'],\n    [/\\btriglicerides\\b/g, 'triglicerideos'],\n    [/\\bast\\b/g, 'tgo'],\n    [/\\balt\\b/g, 'tgp']\n  ];\n\n  for (const [regex, rep] of replacements) {\n    t = t.replace(regex, rep);\n  }\n\n  return t.replace(/\\s+/g, ' ').trim();\n}\n\nfunction uniq(arr) {\n  return [...new Set((arr || []).filter(Boolean))];\n}\n\nfunction safeParseAliases(aliases) {\n  if (Array.isArray(aliases)) return aliases;\n  if (typeof aliases === 'string') {\n    try {\n      const parsed = JSON.parse(aliases);\n      return Array.isArray(parsed) ? parsed : [];\n    } catch {\n      return [];\n    }\n  }\n  return [];\n}\n\nfunction examToSafe(exam) {\n  return {\n    id: exam.id || null,\n    codigo: exam.codigo || null,\n    nome: exam.nome || null,\n    tipo: exam.tipo || null,\n    valor: exam.valor ?? null,\n    convenio: exam.convenio ?? null,\n    preparo: exam.preparo || null,\n    prazo_entrega: exam.prazo_entrega || null,\n    precisa_agendamento: exam.precisa_agendamento ?? null,\n    restrito: exam.restrito ?? false,\n    pode_cotar_whatsapp: exam.pode_cotar_whatsapp ?? null,\n    precisa_jejum: exam.precisa_jejum ?? null,\n    horas_jejum: exam.horas_jejum ?? null\n  };\n}\n\nfunction getAliases(exam) {\n  return uniq([\n    exam.nome,\n    exam.codigo,\n    ...safeParseAliases(exam.aliases)\n  ]).map(normalizeExamText).filter(Boolean);\n}\n\nfunction similarity(a, b) {\n  const x = normalizeExamText(a);\n  const y = normalizeExamText(b);\n  if (!x || !y) return 0;\n  if (x === y) return 1;\n  if (x.includes(y) || y.includes(x)) return 0.94;\n\n  const ax = new Set(x.split(' ').filter(Boolean));\n  const by = new Set(y.split(' ').filter(Boolean));\n  const inter = [...ax].filter(v => by.has(v)).length;\n  const union = new Set([...ax, ...by]).size || 1;\n  const jaccard = inter / union;\n  const lenPenalty = Math.min(x.length, y.length) / Math.max(x.length, y.length);\n\n  return (jaccard * 0.75) + (lenPenalty * 0.25);\n}\n\nfunction findCandidates(term) {\n  const txt = normalizeExamText(term);\n  if (!txt) return [];\n\n  const ranked = [];\n\n  for (const exam of examCatalog) {\n    const aliases = getAliases(exam);\n    let bestScore = 0;\n    let bestAlias = null;\n\n    for (const alias of aliases) {\n      let score = 0;\n\n      if (alias === txt) score = 1;\n      else if (txt.includes(alias) || alias.includes(txt)) score = 0.95;\n      else score = similarity(txt, alias);\n\n      if (score > bestScore) {\n        bestScore = score;\n        bestAlias = alias;\n      }\n    }\n\n    if (bestScore >= 0.78) {\n      ranked.push({ ...exam, _score: bestScore, alias_hit: bestAlias });\n    }\n  }\n\n  ranked.sort((a, b) => b._score - a._score);\n\n  const unique = [];\n  const seen = new Set();\n\n  for (const r of ranked) {\n    const key = norm(r.nome);\n    if (!seen.has(key)) {\n      seen.add(key);\n      unique.push(r);\n    }\n  }\n\n  return unique;\n}\n\nfunction resolveOne(term) {\n  const candidates = findCandidates(term);\n  if (!candidates.length) return { status: 'not_found', term };\n\n  const top = candidates[0];\n  const second = candidates[1];\n\n  if (!second) return { status: 'matched', exam: top, term };\n  if (top._score >= 0.94) return { status: 'matched', exam: top, term };\n  if ((top._score - second._score) >= 0.08 && top._score >= 0.86) {\n    return { status: 'matched', exam: top, term };\n  }\n\n  return {\n    status: 'ambiguous',\n    term,\n    options: candidates.slice(0, 5).map(c => c.nome)\n  };\n}\n\nconst text = normalizeExamText(mensagemOriginal);\n\nconst genericBudgetIntro = [\n  'eu gostaria de fazer um orcamento',\n  'eu gostaria de fazer um orçamento',\n  'gostaria de fazer um orcamento',\n  'gostaria de fazer um orçamento',\n  'quero fazer um orcamento',\n  'quero fazer um orçamento',\n  'preciso de um orcamento',\n  'preciso de um orçamento',\n  'quero orcamento',\n  'quero orçamento',\n  'orcamento',\n  'orçamento'\n].includes(norm(mensagemOriginal));\n\nconst asksPrice = [\n  'valor', 'preco', 'preço', 'quanto custa', 'qual o valor', 'orcamento', 'orçamento'\n].some(t => text.includes(norm(t)));\n\nconst asksPrep = [\n  'preparo', 'jejum', 'precisa de jejum', 'tem jejum', 'qual o preparo'\n].some(t => text.includes(norm(t)));\n\nconst asksTurnaround = [\n  'prazo', 'quanto tempo demora', 'quando fica pronto', 'quantos dias'\n].some(t => text.includes(norm(t)));\n\nconst asksSchedule = [\n  'agendar', 'agendamento', 'marcar', 'agenda'\n].some(t => text.includes(norm(t)));\n\nconst asksTotal = [\n  'valor total', 'preco total', 'preço total', 'qual o total', 'me passe o total',\n  'me passa o total', 'e o total', 'quanto fica tudo', 'total dos exames'\n].some(t => text.includes(norm(t)));\n\nconst saysParticular = ['particular', 'sera particular', 'será particular', 'é particular', 'eh particular'].includes(text);\nconst saysConvenio = ['convenio', 'convênio', 'plano', 'plano de saude', 'plano de saúde'].some(t => text.includes(norm(t)));\n\nconst restrictedTerms = ['beta hcg', 'sexagem fetal', 'dna', 'teste de paternidade', 'paternidade'];\nconst hasRestrictedTerm = restrictedTerms.some(t => text.includes(norm(t)));\n\nconst currentTerms = Array.isArray(triage.exam_names_list) && triage.exam_names_list.length\n  ? triage.exam_names_list.map(normalizeExamText)\n  : [];\n\nconst snapshotExamNames = Array.isArray(ctx.budget_exam_names_list) ? ctx.budget_exam_names_list : [];\nconst snapshotResolved = Array.isArray(ctx.budget_resolved_exams) ? ctx.budget_resolved_exams : [];\nconst snapshotTotal = ctx.budget_total_snapshot || null;\nconst snapshotPaymentType = ctx.budget_payment_type || null;\n\nlet sourceTerms = [];\n\nif (currentTerms.length) {\n  sourceTerms = currentTerms;\n} else if (!genericBudgetIntro && (asksPrice || asksPrep || asksTurnaround || asksTotal || saysParticular || saysConvenio)) {\n  if (snapshotExamNames.length) sourceTerms = snapshotExamNames.map(normalizeExamText);\n  else if (Array.isArray(ctx.last_exam_names_list) && ctx.last_exam_names_list.length) sourceTerms = ctx.last_exam_names_list.map(normalizeExamText);\n  else if (ctx.last_exam_name_raw) sourceTerms = [normalizeExamText(ctx.last_exam_name_raw)];\n}\n\nsourceTerms = uniq(sourceTerms.filter(Boolean));\n\nconst matchedExams = [];\nconst unresolvedTerms = [];\nconst ambiguousTerms = [];\nconst seen = new Set();\n\nfor (const term of sourceTerms) {\n  const result = resolveOne(term);\n\n  if (result.status === 'matched') {\n    const key = norm(result.exam.nome);\n    if (!seen.has(key)) {\n      seen.add(key);\n      matchedExams.push(result.exam);\n    }\n  } else if (result.status === 'ambiguous') {\n    ambiguousTerms.push(result);\n  } else {\n    unresolvedTerms.push(result.term);\n  }\n}\n\nconst restrictedByCatalog = matchedExams.some(e => Boolean(e.restrito));\nconst forceRestrictedHandoff = hasRestrictedTerm || restrictedByCatalog;\n\nfunction formatMoney(v) {\n  return `R$ ${Number(v).toFixed(2).replace('.', ',')}`;\n}\n\nfunction buildSnapshot(exams) {\n  let totalKnown = 0;\n  let totalFullyKnown = true;\n\n  for (const exam of exams) {\n    if (exam.valor !== null && exam.valor !== undefined && exam.pode_cotar_whatsapp !== false) {\n      totalKnown += Number(exam.valor || 0);\n    } else {\n      totalFullyKnown = false;\n    }\n  }\n\n  return {\n    names: exams.map(e => e.nome).filter(Boolean),\n    resolved: exams.map(examToSafe),\n    total: totalFullyKnown ? formatMoney(totalKnown) : null\n  };\n}\n\nlet budgetSnapshot = {\n  names: snapshotExamNames,\n  resolved: snapshotResolved,\n  total: snapshotTotal\n};\n\nif (matchedExams.length) {\n  budgetSnapshot = buildSnapshot(matchedExams);\n}\n\nlet ai_reply_override = null;\nlet force_handoff = false;\nlet force_handoff_category = null;\nlet force_response_status = 'answered';\n\nif (genericBudgetIntro) {\n  ai_reply_override = 'Claro! Para montar seu orçamento certinho, por favor, me informe quais exames você deseja fazer.';\n} else if (forceRestrictedHandoff) {\n  ai_reply_override = 'Esse atendimento precisa ser conduzido por um atendente da Bio Análise. Vou encaminhar sua solicitação para nossa equipe, tudo bem?';\n  force_handoff = true;\n  force_handoff_category = 'restricted_exam';\n  force_response_status = 'handoff_ready';\n} else if (ambiguousTerms.length > 0) {\n  ai_reply_override = 'Para te passar a informação correta, vou encaminhar esse atendimento para um atendente confirmar o nome do exame com segurança.';\n  force_handoff = true;\n  force_handoff_category = 'exam_name_unclear';\n  force_response_status = 'handoff_ready';\n} else if (unresolvedTerms.length > 0) {\n  ai_reply_override = 'Para não te passar nenhuma informação errada, vou encaminhar esse atendimento para um atendente confirmar o exame corretamente no sistema.';\n  force_handoff = true;\n  force_handoff_category = 'exam_name_unclear';\n  force_response_status = 'handoff_ready';\n} else if (!matchedExams.length) {\n  ai_reply_override = 'Pode me informar os nomes dos exames que você deseja verificar?';\n  force_response_status = 'need_clarification';\n} else {\n  const includePrice = asksPrice || asksTotal || triage.intent === 'orcamento' || triage.intent === 'valor' || triage.intent === 'valor_total' || saysParticular || saysConvenio || matchedExams.length >= 1;\n  const includePrep = asksPrep || triage.intent === 'preparo_exame' || triage.intent === 'preparo_e_valor';\n  const includeTurnaround = asksTurnaround || triage.intent === 'prazo';\n  const includeSchedule = asksSchedule || triage.intent === 'agendamento';\n\n  if (matchedExams.length > 1 && includePrice) {\n    const lines = ['*Resumo*'];\n    let totalKnown = 0;\n    let totalFullyKnown = true;\n\n    for (const exam of matchedExams) {\n      if (exam.valor !== null && exam.valor !== undefined && exam.pode_cotar_whatsapp !== false) {\n        lines.push(`* Exame de ${exam.nome} ${formatMoney(exam.valor)}`);\n        totalKnown += Number(exam.valor || 0);\n      } else {\n        lines.push(`* Exame de ${exam.nome} (valor sob confirmação)`);\n        totalFullyKnown = false;\n      }\n    }\n\n    if (totalFullyKnown) {\n      lines.push(`*VALOR TOTAL=* ${formatMoney(totalKnown)}`);\n    } else {\n      lines.push(`*VALOR TOTAL=* dependente de confirmação`);\n    }\n\n    lines.push('');\n    if (saysConvenio || snapshotPaymentType === 'convenio') {\n      lines.push('Me informa o nome do convênio para eu seguir com a verificação.');\n    } else if (!saysParticular && snapshotPaymentType !== 'particular') {\n      lines.push('É convênio ou particular? Se for convênio, me informa o nome para eu verificar.');\n    }\n\n    ai_reply_override = lines.join('\\n');\n  } else if (matchedExams.length > 1 && (includePrep || includeTurnaround || includeSchedule)) {\n    const lines = ['Encontrei estes exames no seu pedido:'];\n\n    for (const exam of matchedExams) {\n      const parts = [`• *${exam.nome}*`];\n\n      if (includePrep) {\n        if (exam.precisa_jejum === true) {\n          parts.push(exam.horas_jejum ? `Jejum: ${exam.horas_jejum}h` : 'Jejum: necessário');\n        } else if (exam.precisa_jejum === false) {\n          parts.push('Jejum: não exige');\n        }\n        if (exam.preparo) parts.push(`Preparo: ${exam.preparo}`);\n      }\n\n      if (includeTurnaround) {\n        parts.push(`Prazo: ${exam.prazo_entrega || 'confirmar com a equipe'}`);\n      }\n\n      if (includeSchedule) {\n        if (exam.precisa_agendamento === true) parts.push('Agendamento: necessário');\n        else if (exam.precisa_agendamento === false) parts.push('Agendamento: não exige');\n      }\n\n      lines.push(parts.join(' | '));\n    }\n\n    ai_reply_override = lines.join('\\n');\n  } else if (matchedExams.length === 1) {\n    const exam = matchedExams[0];\n    const parts = [];\n\n    if (includePrice) {\n      parts.push('*Resumo*');\n      if (exam.valor !== null && exam.valor !== undefined && exam.pode_cotar_whatsapp !== false) {\n        parts.push(`* Exame de ${exam.nome} ${formatMoney(exam.valor)}`);\n        parts.push(`*VALOR TOTAL=* ${formatMoney(exam.valor)}\\n`);\n      } else {\n        parts.push(`* Exame de ${exam.nome} (valor sob confirmação)`);\n        parts.push(`*VALOR TOTAL=* dependente de confirmação\\n`);\n      }\n      \n      if (saysConvenio || snapshotPaymentType === 'convenio') {\n        parts.push('Me informa o nome do convênio para eu seguir com a verificação.');\n      } else if (!saysParticular && snapshotPaymentType !== 'particular') {\n        parts.push('É convênio ou particular? Se for convênio, me informa o nome para eu verificar.');\n      }\n      ai_reply_override = parts.join('\\n');\n    } else {\n      parts.push(`Encontrei o exame de *${exam.nome}*.`);\n      if (includePrep) {\n        if (exam.precisa_jejum === true) {\n          parts.push(exam.horas_jejum ? `É necessário jejum de *${exam.horas_jejum} horas*.` : 'Esse exame precisa de jejum.');\n        } else if (exam.precisa_jejum === false) {\n          parts.push('Esse exame *não exige jejum*.');\n        }\n        if (exam.preparo) parts.push(`Preparo: ${exam.preparo}`);\n      }\n  \n      if (includeTurnaround) {\n        parts.push(`Prazo de entrega: *${exam.prazo_entrega || 'confirmar com a equipe'}*.`);\n      }\n  \n      if (includeSchedule) {\n        if (exam.precisa_agendamento === true) parts.push('Esse exame precisa de agendamento.');\n        else if (exam.precisa_agendamento === false) parts.push('Esse exame não exige agendamento prévio.');\n        else parts.push('Posso te orientar sobre o agendamento desse exame.');\n      }\n  \n      if (!includePrice && !includePrep && !includeTurnaround && !includeSchedule) {\n        parts.push('Posso te ajudar com valor, preparo, jejum, prazo ou agendamento.');\n      }\n      ai_reply_override = parts.join(' ');\n    }\n  } else {\n    ai_reply_override = `Identifiquei estes exames: *${matchedExams.map(e => e.nome).join(', ')}*. Posso te passar valor, preparo, prazo ou já seguir para o agendamento.`;\n  }\n}\n\nconst prompt_sistema = `\nVocê é o subagente de Exames e Preparo da Bio Análise.\n\nRegras:\n- Use somente os dados de safe_data.\n- Nunca invente valor, preparo, jejum, prazo ou agendamento.\n- Se o exame não ficar 100% seguro, não chute e não complete parcialmente.\n- Nesses casos, encaminhe para humano.\n- Quando houver múltiplos exames, trate como orçamento em andamento.\n- Use budget_exam_names_list, budget_resolved_exams e budget_total_snapshot como fonte oficial de follow-up.\n- Responda de forma humana, clara, natural e organizada.\n`;\n\nreturn [{\n  json: {\n    ...input,\n    subagente: 'exames_preparo',\n    prompt_sistema,\n    mensagem_original: mensagemOriginal,\n    mensagem_normalizada: text,\n    parece_consulta_exame: Boolean(matchedExams.length || triage.intent === 'consulta_exame' || triage.intent === 'orcamento'),\n    precisa_confirmacao: false,\n    eh_restrito: forceRestrictedHandoff,\n    force_handoff,\n    force_handoff_category,\n    force_response_status,\n    safe_data: {\n      exam_found: matchedExams.length > 0,\n      exam_count: matchedExams.length,\n      exame: matchedExams[0] ? examToSafe(matchedExams[0]) : null,\n      exames: matchedExams.map(examToSafe),\n      exam_names_list: budgetSnapshot.names,\n      budget_mode_active: budgetSnapshot.names.length > 1,\n      budget_payment_type: saysParticular ? 'particular' : (saysConvenio ? 'convenio' : snapshotPaymentType),\n      budget_exam_names_list: budgetSnapshot.names,\n      budget_resolved_exams: budgetSnapshot.resolved,\n      budget_total_snapshot: budgetSnapshot.total,\n      unresolved_terms: unresolvedTerms,\n      ambiguous_terms: ambiguousTerms\n    },\n    ai_reply_override,\n    conversation_context: {\n      ...ctx,\n      last_exam_name_raw: budgetSnapshot.names[0] || ctx.last_exam_name_raw || null,\n      last_exam_names_list: budgetSnapshot.names.length ? budgetSnapshot.names : (ctx.last_exam_names_list || []),\n      budget_mode_active: budgetSnapshot.names.length > 1,\n      budget_payment_type: saysParticular ? 'particular' : (saysConvenio ? 'convenio' : snapshotPaymentType),\n      budget_exam_names_list: budgetSnapshot.names,\n      budget_resolved_exams: budgetSnapshot.resolved,\n      budget_total_snapshot: budgetSnapshot.total,\n      collect_field: null,\n      ambiguous_exam_query: null,\n      ambiguous_exam_options: []\n    }\n  }\n}];"
+      },
+      "id": "51488e2c-f5bb-4b03-88aa-fe06dcc44f1d",
+      "name": "Subagente Exames e Preparo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        -1216
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json || {};\nconst t = item.triage || {};\nconst ctx = item.conversation_context || {};\nconst p = item.clinic_profile || {};\nconst examCatalog = Array.isArray(item.exam_catalog) ? item.exam_catalog : [];\n\nconst messageText = String(item.message_text || '').trim();\n\nfunction norm(v) {\n  return String(v || '')\n    .normalize('NFD')\n    .replace(/[\\u0300-\\u036f]/g, '')\n    .toLowerCase()\n    .replace(/[^\\w\\s:/-]/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nfunction normalizeExamText(v) {\n  let t = norm(v);\n  const map = [\n    [/\\bcreatina\\b/g, 'creatinina'],\n    [/\\bhemograma\\b/g, 'hemograma completo'],\n    [/\\burina simples\\b/g, 'eas'],\n    [/\\burina tipo 1\\b/g, 'eas'],\n    [/\\burina tipo i\\b/g, 'eas'],\n    [/\\beas\\b/g, 'eas'],\n    [/\\brubela\\b/g, 'rubeola'],\n    [/\\bt4l\\b/g, 't4 livre'],\n  ];\n  for (const [rgx, rep] of map) t = t.replace(rgx, rep);\n  return t.replace(/\\s+/g, ' ').trim();\n}\n\nfunction uniq(arr) {\n  return [...new Set((arr || []).filter(Boolean))];\n}\n\nfunction safeParseAliases(aliases) {\n  if (Array.isArray(aliases)) return aliases;\n  if (typeof aliases === 'string') {\n    try {\n      const parsed = JSON.parse(aliases);\n      return Array.isArray(parsed) ? parsed : [];\n    } catch {\n      return [];\n    }\n  }\n  return [];\n}\n\nfunction getAliases(exam) {\n  return uniq([exam.nome, exam.codigo, ...safeParseAliases(exam.aliases)])\n    .map(normalizeExamText)\n    .filter(Boolean);\n}\n\nfunction examToSafe(exam) {\n  return {\n    id: exam.id || null,\n    codigo: exam.codigo || null,\n    nome: exam.nome || null,\n    tipo: exam.tipo || null,\n    valor: exam.valor ?? null,\n    convenio: exam.convenio ?? null,\n    preparo: exam.preparo || null,\n    prazo_entrega: exam.prazo_entrega || null,\n    precisa_agendamento: exam.precisa_agendamento ?? null,\n    restrito: exam.restrito ?? false,\n    pode_cotar_whatsapp: exam.pode_cotar_whatsapp ?? null,\n    precisa_jejum: exam.precisa_jejum ?? null,\n    horas_jejum: exam.horas_jejum ?? null\n  };\n}\n\nfunction findExam(term) {\n  const txt = normalizeExamText(term);\n  if (!txt) return null;\n\n  for (const exam of examCatalog) {\n    const aliases = getAliases(exam);\n    if (aliases.some(a => a === txt || txt.includes(a) || a.includes(txt))) {\n      return exam;\n    }\n  }\n  return null;\n}\n\nfunction splitExamTerms(value) {\n  const raw = String(value || '').trim();\n  if (!raw) return [];\n  return uniq(\n    raw\n      .replace(/\\n/g, ',')\n      .replace(/\\s+e\\s+/gi, ',')\n      .replace(/\\s+mais\\s+/gi, ',')\n      .replace(/\\//g, ',')\n      .replace(/;/g, ',')\n      .split(',')\n      .map(s => normalizeExamText(s))\n      .filter(Boolean)\n  );\n}\n\nfunction detectTipoColeta(text) {\n  const n = norm(text);\n  if (\n    n.includes('coleta em casa') ||\n    n.includes('coleta domiciliar') ||\n    n.includes('em domicilio') ||\n    n.includes('em domicílio') ||\n    n.includes('domiciliar') ||\n    n.includes('em casa')\n  ) return 'domiciliar';\n\n  if (\n    n.includes('na clinica') ||\n    n.includes('na clínica') ||\n    n.includes('na unidade') ||\n    n.includes('clinica') ||\n    n.includes('clínica')\n  ) return 'clinica';\n\n  return null;\n}\n\nfunction detectDate(text) {\n  const raw = String(text || '');\n  const m = raw.match(/\\b(\\d{1,2}[/-]\\d{1,2}(?:[/-]\\d{2,4})?)\\b/);\n  if (m) return m[1];\n\n  if (/\\b(amanha|amanhã|hoje|segunda|terca|terça|quarta|quinta|sexta|sabado|sábado|domingo)\\b/i.test(raw)) {\n    return raw.trim();\n  }\n\n  return null;\n}\n\nfunction detectTime(text) {\n  const raw = String(text || '');\n  const m = raw.match(/\\b(\\d{1,2}:\\d{2}|\\d{1,2}h)\\b/);\n  if (m) return m[1];\n\n  if (/\\b(primeiro horario|primeiro horário|de manha|de manhã|a tarde|à tarde)\\b/i.test(raw)) {\n    return raw.trim();\n  }\n\n  return null;\n}\n\nfunction extractPhone(value) {\n  const digits = String(value || '').replace(/\\D/g, '');\n  return digits.length >= 10 ? digits : null;\n}\n\nfunction formatPhone(value) {\n  const digits = extractPhone(value);\n  return digits ? `+${digits}` : null;\n}\n\nfunction looksLikeFullName(name) {\n  const n = String(name || '').trim();\n  if (!n) return false;\n  if (n === 'Cliente WhatsApp') return false;\n  if (/\\d/.test(n)) return false;\n  return n.split(' ').filter(Boolean).length >= 2;\n}\n\nfunction isAffirmative(text) {\n  return ['sim', 'isso', 'correto', 'confirmo', 'ok', 'certo', 'pode', 'pode seguir', 'pode confirmar'].includes(norm(text));\n}\n\nfunction isNegative(text) {\n  return ['nao', 'não', 'corrigir', 'ajustar', 'errado', 'incorreto'].includes(norm(text));\n}\n\nfunction formatMoney(v) {\n  return `R$ ${Number(v).toFixed(2).replace('.', ',')}`;\n}\n\nlet customer_name =\n  ctx.paciente_nome ||\n  item.paciente_nome ||\n  item.customer_name ||\n  'Cliente WhatsApp';\n\nlet customer_phone =\n  ctx.customer_phone ||\n  item.customer_phone ||\n  (item.phone_normalized ? `+${item.phone_normalized}` : null) ||\n  null;\n\nlet tipo_coleta = ctx.tipo_coleta || detectTipoColeta(messageText) || null;\nlet endereco_coleta = ctx.endereco_coleta || null;\nlet data_preferida = ctx.data_preferida || null;\nlet horario_preferido = ctx.horario_preferido || null;\nlet collect_field = ctx.collect_field || null;\n\nlet budgetResolved = Array.isArray(ctx.budget_resolved_exams) ? ctx.budget_resolved_exams : [];\nlet budgetExamNames = Array.isArray(ctx.budget_exam_names_list) ? ctx.budget_exam_names_list : [];\nlet budgetTotal = ctx.budget_total_snapshot || null;\n\n// bootstrap só se não houver snapshot oficial\nif (!budgetExamNames.length) {\n  const fromTriage = Array.isArray(t.exam_names_list) ? t.exam_names_list : [];\n  const names = fromTriage.length ? fromTriage : splitExamTerms(messageText);\n  const resolved = [];\n\n  for (const name of names) {\n    const exam = findExam(name);\n    if (exam) resolved.push(examToSafe(exam));\n  }\n\n  if (resolved.length) {\n    budgetResolved = resolved;\n    budgetExamNames = resolved.map(e => e.nome).filter(Boolean);\n\n    let totalKnown = 0;\n    let totalFullyKnown = true;\n    for (const exam of resolved) {\n      if (exam.valor !== null && exam.valor !== undefined && exam.pode_cotar_whatsapp !== false) {\n        totalKnown += Number(exam.valor || 0);\n      } else {\n        totalFullyKnown = false;\n      }\n    }\n    budgetTotal = totalFullyKnown ? formatMoney(totalKnown) : null;\n  }\n}\n\nif (collect_field === 'nome_completo') {\n  if (looksLikeFullName(messageText)) {\n    customer_name = messageText.trim();\n    collect_field = null;\n  } else {\n    return [{\n      json: {\n        ...item,\n        active_subagent: 'scheduling_agent',\n        ai_reply_override: 'Para seguir com o agendamento, preciso do seu *nome completo*. Pode me informar, por favor?',\n        force_response_status: 'need_clarification',\n        safe_data: {\n          ...(item.safe_data || {}),\n          customer_name,\n          customer_phone,\n          budget_exam_names_list: budgetExamNames,\n          budget_resolved_exams: budgetResolved,\n          budget_total_snapshot: budgetTotal\n        },\n        conversation_context: {\n          ...ctx,\n          collect_field: 'nome_completo',\n          agendamento_etapa: 'coletando_nome'\n        }\n      }\n    }];\n  }\n}\n\nif (collect_field === 'tipo_coleta') {\n  const tipo = detectTipoColeta(messageText);\n  if (tipo) {\n    tipo_coleta = tipo;\n    collect_field = null;\n  } else {\n    return [{\n      json: {\n        ...item,\n        active_subagent: 'scheduling_agent',\n        ai_reply_override: 'Você prefere realizar a coleta na *clínica* ou por *coleta domiciliar*?',\n        force_response_status: 'need_clarification',\n        safe_data: {\n          ...(item.safe_data || {}),\n          customer_name,\n          customer_phone,\n          budget_exam_names_list: budgetExamNames,\n          budget_resolved_exams: budgetResolved,\n          budget_total_snapshot: budgetTotal\n        },\n        conversation_context: {\n          ...ctx,\n          collect_field: 'tipo_coleta',\n          agendamento_etapa: 'coletando_tipo_coleta'\n        }\n      }\n    }];\n  }\n}\n\nif (collect_field === 'endereco_coleta') {\n  if (messageText.trim().length >= 8) {\n    endereco_coleta = messageText.trim();\n    collect_field = null;\n  } else {\n    return [{\n      json: {\n        ...item,\n        active_subagent: 'scheduling_agent',\n        ai_reply_override: 'Pode me informar o *endereço completo* da coleta domiciliar, por favor?',\n        force_response_status: 'need_clarification',\n        safe_data: {\n          ...(item.safe_data || {}),\n          customer_name,\n          customer_phone,\n          budget_exam_names_list: budgetExamNames,\n          budget_resolved_exams: budgetResolved,\n          budget_total_snapshot: budgetTotal,\n          tipo_coleta\n        },\n        conversation_context: {\n          ...ctx,\n          collect_field: 'endereco_coleta',\n          agendamento_etapa: 'coletando_endereco',\n          tipo_coleta\n        }\n      }\n    }];\n  }\n}\n\nif (collect_field === 'data_preferida') {\n  const data = detectDate(messageText);\n  if (data) {\n    data_preferida = data;\n    collect_field = null;\n  } else {\n    return [{\n      json: {\n        ...item,\n        active_subagent: 'scheduling_agent',\n        ai_reply_override: 'Pode me informar a *data preferida* para a coleta?',\n        force_response_status: 'need_clarification',\n        safe_data: {\n          ...(item.safe_data || {}),\n          customer_name,\n          customer_phone,\n          budget_exam_names_list: budgetExamNames,\n          budget_resolved_exams: budgetResolved,\n          budget_total_snapshot: budgetTotal,\n          tipo_coleta,\n          endereco_coleta\n        },\n        conversation_context: {\n          ...ctx,\n          collect_field: 'data_preferida',\n          agendamento_etapa: 'coletando_data',\n          tipo_coleta,\n          endereco_coleta\n        }\n      }\n    }];\n  }\n}\n\nif (collect_field === 'horario_preferido') {\n  const horario = detectTime(messageText);\n  if (horario) {\n    horario_preferido = horario;\n    collect_field = null;\n  } else {\n    return [{\n      json: {\n        ...item,\n        active_subagent: 'scheduling_agent',\n        ai_reply_override: 'Pode me informar o *horário preferido* para a coleta?',\n        force_response_status: 'need_clarification',\n        safe_data: {\n          ...(item.safe_data || {}),\n          customer_name,\n          customer_phone,\n          budget_exam_names_list: budgetExamNames,\n          budget_resolved_exams: budgetResolved,\n          budget_total_snapshot: budgetTotal,\n          tipo_coleta,\n          endereco_coleta,\n          data_preferida\n        },\n        conversation_context: {\n          ...ctx,\n          collect_field: 'horario_preferido',\n          agendamento_etapa: 'coletando_horario',\n          tipo_coleta,\n          endereco_coleta,\n          data_preferida\n        }\n      }\n    }];\n  }\n}\n\nif (collect_field === 'telefone_contato') {\n  const phone = formatPhone(messageText);\n  if (phone) {\n    customer_phone = phone;\n    collect_field = null;\n  } else {\n    return [{\n      json: {\n        ...item,\n        active_subagent: 'scheduling_agent',\n        ai_reply_override: 'Não consegui identificar o telefone. Pode me enviar apenas o *número com DDD*, por favor?',\n        force_response_status: 'need_clarification',\n        safe_data: {\n          ...(item.safe_data || {}),\n          customer_name,\n          customer_phone,\n          budget_exam_names_list: budgetExamNames,\n          budget_resolved_exams: budgetResolved,\n          budget_total_snapshot: budgetTotal,\n          tipo_coleta,\n          endereco_coleta,\n          data_preferida,\n          horario_preferido\n        },\n        conversation_context: {\n          ...ctx,\n          collect_field: 'telefone_contato',\n          agendamento_etapa: 'coletando_telefone',\n          tipo_coleta,\n          endereco_coleta,\n          data_preferida,\n          horario_preferido\n        }\n      }\n    }];\n  }\n}\n\nif (collect_field === 'confirmar_pedido_agendamento') {\n  if (isAffirmative(messageText)) {\n    const resumoFinal = [\n      'Perfeito. Seu *pedido foi registrado* com os seguintes dados:',\n      `• Nome: *${customer_name}*`,\n      customer_phone ? `• Contato: *${customer_phone}*` : null,\n      budgetExamNames.length ? `• Exames: *${budgetExamNames.join(', ')}*` : null,\n      `• Tipo de coleta: *${tipo_coleta === 'domiciliar' ? 'Domiciliar' : 'Na clínica'}*`,\n      tipo_coleta === 'domiciliar' && endereco_coleta ? `• Endereço: *${endereco_coleta}*` : null,\n      data_preferida ? `• Data preferida: *${data_preferida}*` : null,\n      horario_preferido ? `• Horário preferido: *${horario_preferido}*` : null,\n      budgetTotal ? `• Valor total informado: *${budgetTotal}*` : null,\n      '',\n      'A equipe da Bio Análise fará a *confirmação final da disponibilidade*.'\n    ].filter(Boolean).join('\\n');\n\n    return [{\n      json: {\n        ...item,\n        active_subagent: 'scheduling_agent',\n        ai_reply_override: resumoFinal,\n        force_response_status: 'answered',\n        safe_data: {\n          ...(item.safe_data || {}),\n          customer_name,\n          customer_phone,\n          exam_names_list: budgetExamNames,\n          budget_exam_names_list: budgetExamNames,\n          budget_resolved_exams: budgetResolved,\n          budget_total_snapshot: budgetTotal,\n          tipo_coleta,\n          endereco_coleta,\n          data_preferida,\n          horario_preferido,\n          disponibilidade_status: 'pendente_validacao'\n        },\n        conversation_context: {\n          ...ctx,\n          paciente_nome: customer_name,\n          customer_phone,\n          collect_field: null,\n          agendamento_etapa: 'finalizado',\n          last_exam_names_list: budgetExamNames,\n          last_exam_name_raw: budgetExamNames[0] || ctx.last_exam_name_raw || null,\n          budget_exam_names_list: budgetExamNames,\n          budget_resolved_exams: budgetResolved,\n          budget_total_snapshot: budgetTotal,\n          tipo_coleta,\n          endereco_coleta,\n          data_preferida,\n          horario_preferido\n        }\n      }\n    }];\n  }\n\n  if (isNegative(messageText)) {\n    return [{\n      json: {\n        ...item,\n        active_subagent: 'scheduling_agent',\n        ai_reply_override: 'Tudo bem. Me informe o que deseja ajustar no pedido: *exames*, *data*, *horário*, *tipo de coleta* ou *contato*.',\n        force_response_status: 'need_clarification',\n        conversation_context: {\n          ...ctx,\n          collect_field: 'ajuste_pedido',\n          agendamento_etapa: 'ajustando_pedido',\n          tipo_coleta,\n          endereco_coleta,\n          data_preferida,\n          horario_preferido\n        },\n        safe_data: {\n          ...(item.safe_data || {}),\n          customer_name,\n          customer_phone,\n          budget_exam_names_list: budgetExamNames,\n          budget_resolved_exams: budgetResolved,\n          budget_total_snapshot: budgetTotal\n        }\n      }\n    }];\n  }\n}\n\nif (collect_field === 'ajuste_pedido') {\n  return [{\n    json: {\n      ...item,\n      active_subagent: 'scheduling_agent',\n      ai_reply_override: 'Perfeito. Pode me enviar novamente os dados corrigidos, e eu monto um novo resumo para confirmação.',\n      force_response_status: 'need_clarification',\n      conversation_context: {\n        ...ctx,\n        collect_field: null,\n        agendamento_etapa: 'coletando_dados',\n        tipo_coleta,\n        endereco_coleta,\n        data_preferida,\n        horario_preferido\n      },\n      safe_data: {\n        ...(item.safe_data || {}),\n        customer_name,\n        customer_phone,\n        budget_exam_names_list: budgetExamNames,\n        budget_resolved_exams: budgetResolved,\n        budget_total_snapshot: budgetTotal\n      }\n    }\n  }];\n}\n\nif (!budgetExamNames.length) {\n  return [{\n    json: {\n      ...item,\n      active_subagent: 'scheduling_agent',\n      ai_reply_override: 'Para seguir com o agendamento, preciso confirmar *quais exames* você deseja realizar.',\n      force_response_status: 'need_clarification',\n      conversation_context: {\n        ...ctx,\n        collect_field: 'nome_exame',\n        agendamento_etapa: 'coletando_exames'\n      },\n      safe_data: {\n        ...(item.safe_data || {}),\n        customer_name,\n        customer_phone\n      }\n    }\n  }];\n}\n\nif (!looksLikeFullName(customer_name)) {\n  return [{\n    json: {\n      ...item,\n      active_subagent: 'scheduling_agent',\n      ai_reply_override: 'Para seguir com o agendamento, preciso do seu *nome completo*. Como devo registrar?',\n      force_response_status: 'need_clarification',\n      conversation_context: {\n        ...ctx,\n        collect_field: 'nome_completo',\n        agendamento_etapa: 'coletando_nome'\n      },\n      safe_data: {\n        ...(item.safe_data || {}),\n        customer_name,\n        customer_phone,\n        budget_exam_names_list: budgetExamNames,\n        budget_resolved_exams: budgetResolved,\n        budget_total_snapshot: budgetTotal\n      }\n    }\n  }];\n}\n\nif (!tipo_coleta) {\n  return [{\n    json: {\n      ...item,\n      active_subagent: 'scheduling_agent',\n      ai_reply_override: 'Você deseja realizar a coleta na *clínica* ou por *coleta domiciliar*?',\n      force_response_status: 'need_clarification',\n      conversation_context: {\n        ...ctx,\n        collect_field: 'tipo_coleta',\n        agendamento_etapa: 'coletando_tipo_coleta'\n      },\n      safe_data: {\n        ...(item.safe_data || {}),\n        customer_name,\n        customer_phone,\n        budget_exam_names_list: budgetExamNames,\n        budget_resolved_exams: budgetResolved,\n        budget_total_snapshot: budgetTotal\n      }\n    }\n  }];\n}\n\nif (tipo_coleta === 'domiciliar' && !endereco_coleta) {\n  return [{\n    json: {\n      ...item,\n      active_subagent: 'scheduling_agent',\n      ai_reply_override: 'Para a *coleta domiciliar*, preciso do *endereço completo* onde a equipe deverá realizar a coleta.',\n      force_response_status: 'need_clarification',\n      conversation_context: {\n        ...ctx,\n        collect_field: 'endereco_coleta',\n        agendamento_etapa: 'coletando_endereco',\n        tipo_coleta\n      },\n      safe_data: {\n        ...(item.safe_data || {}),\n        customer_name,\n        customer_phone,\n        budget_exam_names_list: budgetExamNames,\n        budget_resolved_exams: budgetResolved,\n        budget_total_snapshot: budgetTotal,\n        tipo_coleta\n      }\n    }\n  }];\n}\n\nif (!data_preferida) {\n  return [{\n    json: {\n      ...item,\n      active_subagent: 'scheduling_agent',\n      ai_reply_override: 'Qual a *data preferida* para a coleta?',\n      force_response_status: 'need_clarification',\n      conversation_context: {\n        ...ctx,\n        collect_field: 'data_preferida',\n        agendamento_etapa: 'coletando_data',\n        tipo_coleta,\n        endereco_coleta\n      },\n      safe_data: {\n        ...(item.safe_data || {}),\n        customer_name,\n        customer_phone,\n        budget_exam_names_list: budgetExamNames,\n        budget_resolved_exams: budgetResolved,\n        budget_total_snapshot: budgetTotal,\n        tipo_coleta,\n        endereco_coleta\n      }\n    }\n  }];\n}\n\nif (!horario_preferido) {\n  return [{\n    json: {\n      ...item,\n      active_subagent: 'scheduling_agent',\n      ai_reply_override: 'Qual o *horário preferido* para a coleta?',\n      force_response_status: 'need_clarification',\n      conversation_context: {\n        ...ctx,\n        collect_field: 'horario_preferido',\n        agendamento_etapa: 'coletando_horario',\n        tipo_coleta,\n        endereco_coleta,\n        data_preferida\n      },\n      safe_data: {\n        ...(item.safe_data || {}),\n        customer_name,\n        customer_phone,\n        budget_exam_names_list: budgetExamNames,\n        budget_resolved_exams: budgetResolved,\n        budget_total_snapshot: budgetTotal,\n        tipo_coleta,\n        endereco_coleta,\n        data_preferida\n      }\n    }\n  }];\n}\n\nif (!customer_phone) {\n  return [{\n    json: {\n      ...item,\n      active_subagent: 'scheduling_agent',\n      ai_reply_override: 'Para finalizar o pedido, poderia me confirmar um *telefone para contato*, por favor?',\n      force_response_status: 'need_clarification',\n      conversation_context: {\n        ...ctx,\n        collect_field: 'telefone_contato',\n        agendamento_etapa: 'coletando_telefone',\n        tipo_coleta,\n        endereco_coleta,\n        data_preferida,\n        horario_preferido\n      },\n      safe_data: {\n        ...(item.safe_data || {}),\n        customer_name,\n        customer_phone,\n        budget_exam_names_list: budgetExamNames,\n        budget_resolved_exams: budgetResolved,\n        budget_total_snapshot: budgetTotal,\n        tipo_coleta,\n        endereco_coleta,\n        data_preferida,\n        horario_preferido\n      }\n    }\n  }];\n}\n\nconst resumo = [\n  'Antes de finalizar, vou resumir o seu pedido para confirmação:',\n  `• Nome: *${customer_name}*`,\n  customer_phone ? `• Contato: *${customer_phone}*` : null,\n  `• Exames: *${budgetExamNames.join(', ')}*`,\n  `• Tipo de coleta: *${tipo_coleta === 'domiciliar' ? 'Domiciliar' : 'Na clínica'}*`,\n  tipo_coleta === 'domiciliar' && endereco_coleta ? `• Endereço: *${endereco_coleta}*` : null,\n  `• Data preferida: *${data_preferida}*`,\n  `• Horário preferido: *${horario_preferido}*`,\n  budgetTotal ? `• Valor total informado: *${budgetTotal}*` : null,\n  '',\n  'Se estiver tudo certo, responda apenas *sim* para eu concluir o pedido.'\n].filter(Boolean).join('\\n');\n\nreturn [{\n  json: {\n    ...item,\n    active_subagent: 'scheduling_agent',\n    ai_reply_override: resumo,\n    force_response_status: 'need_clarification',\n    conversation_context: {\n      ...ctx,\n      paciente_nome: customer_name,\n      customer_phone,\n      collect_field: 'confirmar_pedido_agendamento',\n      agendamento_etapa: 'aguardando_confirmacao_final',\n      last_exam_names_list: budgetExamNames,\n      last_exam_name_raw: budgetExamNames[0] || ctx.last_exam_name_raw || null,\n      budget_exam_names_list: budgetExamNames,\n      budget_resolved_exams: budgetResolved,\n      budget_total_snapshot: budgetTotal,\n      tipo_coleta,\n      endereco_coleta,\n      data_preferida,\n      horario_preferido\n    },\n    safe_data: {\n      ...(item.safe_data || {}),\n      customer_name,\n      customer_phone,\n      exam_names_list: budgetExamNames,\n      budget_exam_names_list: budgetExamNames,\n      budget_resolved_exams: budgetResolved,\n      budget_total_snapshot: budgetTotal,\n      tipo_coleta,\n      endereco_coleta,\n      data_preferida,\n      horario_preferido,\n      disponibilidade_status: 'pendente_validacao',\n      horario_coleta: p.horario_coleta || null,\n      note: 'O agendamento é provisório e será confirmado pela equipe da Bio Análise.'\n    }\n  }\n}];"
+      },
+      "id": "6fa78612-7bf4-4a5b-8556-903cd9eed32f",
+      "name": "Subagente Agendamento",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        -1056
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\n\nconst orch = item.orchestration || {};\nconst active = item.subagente || item.active_subagent || orch.target_agent || 'institutional_agent';\nconst p = item.clinic_profile || {};\nconst ctx = item.conversation_context || {};\nconst greeting = item.greeting_analysis || {};\nconst temporal = item.temporal_context || {};\n\n// Mensagem do cliente\nconst customerMessage =\n  item.mensagem_original ||\n  item.message_text ||\n  item.message ||\n  item.text ||\n  item.body ||\n  item.content ||\n  '';\n\n// Prompt especializado do subagente\nconst subagentPrompt = item.prompt_sistema || '';\nconst contextGoal = item.llm_context_goal || item.groq_context_goal || '';\n\n// Temperatura\nlet temp = 0.2;\nif (orch.intent === 'saudacao' || orch.intent === 'despedida') temp = 0.4;\n\n// Regra de preço\nconst priceRule =\n  active === 'exames_preparo' || active === 'exam_prep_agent'\n    ? 'Você PODE informar valores particulares quando disponíveis em safe_data.'\n    : 'Não informe preços de exames nesta resposta, a menos que eles já estejam estruturados em safe_data.price_summary ou ai_reply_override.';\n\n// Prompt global\nconst baseSystemPrompt = `\nVocê é o assistente virtual da ${p.brand_name || 'Bio Análise'}, clínica de análises clínicas em ${p.city || 'Iporá-GO'}.\n\nESTILO DE RESPOSTA:\n- Fale como uma atendente humana, cordial, natural e profissional.\n- Seja acolhedora, clara e objetiva, sem parecer robótica.\n- Use linguagem fluida de WhatsApp.\n- Evite repetir sempre a mesma estrutura de resposta.\n- Use *negrito* apenas quando fizer sentido para destacar exame, valor ou informação importante.\n\nREGRAS GLOBAIS:\n1. Use SOMENTE os dados de safe_data e do contexto recebido. Nunca invente informações.\n2. ${priceRule}\n3. Nunca forneça detalhes sobre Beta HCG, sexagem fetal, DNA ou teste de paternidade. Nesses casos, encaminhe para atendente.\n4. Quando faltar informação, peça de forma simples e natural.\n5. Para agendamento, informe sempre que ele é provisório e será confirmado pela equipe.\n6. Para cadastro, quando necessário, peça um dado por vez.\n7. Quando o paciente pedir valor de exame, informe diretamente se houver valor disponível.\n8. Quando o paciente pedir preparo + valor, entregue os dois de forma organizada e natural.\n9. Quando o paciente pedir agendamento, conduza a coleta progressiva dos dados sem soar mecânica.\n10. Nunca invente convênio, prazo, endereço, horário ou valor fora do safe_data.\n11. Sempre responda em português do Brasil.\n12. Se a conversa já estiver em andamento, não repita saudação longa desnecessariamente.\n13. Nunca trate pergunta sobre exame como assunto institucional.\n14. Nunca responda com contatos institucionais se o cliente estiver perguntando sobre exame.\n15. Se existir ai_reply_override, considere isso como a resposta prioritária e não contradiga essa instrução.\n16. Se o collect_field estiver preenchido, entenda que a conversa está em coleta guiada e respeite a etapa atual.\n17. Se houver orçamento em andamento, use budget_exam_names_list, budget_resolved_exams e budget_total_snapshot como fonte oficial.\n18. Nunca misture texto livre do cliente com o nome dos exames no resumo final.\n\nREGRA DE SAUDAÇÃO:\n- Se o cliente usar \"bom dia\", responda \"Bom dia\".\n- Se usar \"boa tarde\", responda \"Boa tarde\".\n- Se usar \"boa noite\", responda \"Boa noite\".\n- Priorize espelhar a saudação do cliente em vez de corrigi-la pelo horário.\n- Só use saudação baseada no horário quando o cliente não tiver cumprimentado.\n\nREGRAS DE HORÁRIO E FUNCIONAMENTO:\n- Perguntas sobre hoje, amanhã, domingo, sábado, dias da semana, horário, abertura, funcionamento, atendimento ou coleta devem ser tratadas como assunto institucional.\n- Nunca trate essas mensagens como pergunta de exame.\n- Use temporal_context como fonte de verdade para interpretar \"hoje\" e \"amanhã\".\n- Se temporal_context.horario_amanha.aberto for false, responda de forma direta.\n- Se a pergunta for objetiva sobre um dia específico, responda primeiro de forma direta e curta.\n\nFORMATO DE SAÍDA:\nVocê deve responder obrigatoriamente em json válido.\nRetorne apenas json puro, sem markdown, sem explicações e sem texto fora do json.\nUse exatamente esta estrutura json:\n{\"status\":\"answered\"|\"need_clarification\"|\"handoff\",\"reply\":\"texto\",\"handoff\":false,\"handoff_category\":null,\"reason_codes\":[]}\n`;\n\n// Prompt final\nconst developerPrompt = [\n  baseSystemPrompt.trim(),\n  contextGoal ? '\\n\\nOBJETIVO OPERACIONAL:\\n' + contextGoal.trim() : '',\n  subagentPrompt ? '\\n\\nREGRAS ESPECÍFICAS DO SUBAGENTE:\\n' + subagentPrompt.trim() : ''\n].join('');\n\n// Payload do usuário\nconst payload = {\n  customer_message: customerMessage,\n  customer_name: item.customer_name || ctx.paciente_nome || 'Cliente',\n  customer_phone: ctx.customer_phone || item.customer_phone || null,\n\n  intent: orch.intent || null,\n  decision: orch.decision || null,\n  target_agent: orch.target_agent || active,\n  active_subagent: active,\n\n  ai_reply_override: item.ai_reply_override || null,\n\n  safe_data: item.safe_data || {},\n  temporal_context: temporal || null,\n  greeting_analysis: greeting || null,\n\n  subagent_signals: {\n    parece_consulta_exame: item.parece_consulta_exame ?? null,\n    precisa_confirmacao: item.precisa_confirmacao ?? null,\n    eh_restrito: item.eh_restrito ?? null,\n    mensagem_normalizada: item.mensagem_normalizada || null\n  },\n\n  conversation_context: {\n    last_intent: ctx.last_intent || null,\n    current_status: ctx.current_status || null,\n    last_exam_name_raw: ctx.last_exam_name_raw || null,\n    last_exam_names_list: ctx.last_exam_names_list || [],\n    last_input_type: ctx.last_input_type || null,\n\n    collect_field: ctx.collect_field || null,\n    agendamento_etapa: ctx.agendamento_etapa || null,\n\n    tipo_coleta: ctx.tipo_coleta || null,\n    endereco_coleta: ctx.endereco_coleta || null,\n    data_preferida: ctx.data_preferida || null,\n    horario_preferido: ctx.horario_preferido || null,\n\n    budget_mode_active: ctx.budget_mode_active ?? null,\n    budget_exam_names_list: ctx.budget_exam_names_list || [],\n    budget_resolved_exams: ctx.budget_resolved_exams || [],\n    budget_total_snapshot: ctx.budget_total_snapshot || null,\n    budget_payment_type: ctx.budget_payment_type || null\n  },\n\n  operational_rules: {\n    if_restricted_exam: 'status=handoff',\n    if_exam_ambiguous: 'status=need_clarification',\n    if_exam_identified: 'status=answered',\n    if_hours_question_about_tomorrow_and_closed: 'status=answered',\n    if_greeting_present: 'mirror_customer_greeting',\n    if_ai_reply_override_exists: 'respect_override'\n  },\n\n  output_requirement: 'Responder em json válido, puro, sem texto extra.'\n};\n\nreturn [{\n  json: {\n    ...item,\n    openai_request: {\n      model: 'gpt-4.1-mini',\n      temperature: temp,\n      max_completion_tokens: 450,\n      response_format: { type: 'json_object' },\n      messages: [\n        { role: 'system', content: developerPrompt },\n        { role: 'user', content: JSON.stringify(payload) }\n      ]\n    }\n  }\n}];"
+      },
+      "id": "9268d9ed-7fc0-48e7-9d0f-3796760d978b",
+      "name": "Preparar Payload OpenAI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3824,
+        -1264
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.OPENAI_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.openai_request }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "f8db3e32-b90a-4509-a322-88d07e52a6d9",
+      "name": "OpenAI Chat Completions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4048,
+        -1264
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Preparar Payload OpenAI').item.json || {};\nconst raw = (((($json.choices || [])[0] || {}).message || {}).content) || '';\n\nlet parsed;\ntry {\n  parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;\n} catch (e) {\n  parsed = {\n    status: 'answered',\n    reply: base.orchestration?.clarification_question ||\n      'Posso te ajudar com horários, endereço, preparo, valores e agendamento.',\n    handoff: false,\n    handoff_category: null,\n    reason_codes: []\n  };\n}\n\nconst forcedReply = base.ai_reply_override || null;\nconst forcedStatus =\n  base.force_response_status ||\n  (base.force_handoff ? 'handoff_ready' : null);\n\nconst finalStatus =\n  forcedStatus ||\n  parsed.status ||\n  'answered';\n\nconst finalHandoff =\n  Boolean(base.force_handoff) ||\n  Boolean(parsed.handoff);\n\nconst finalCategory =\n  base.force_handoff_category ||\n  parsed.handoff_category ||\n  null;\n\nreturn [{\n  json: {\n    ...base,\n    handoff_record: base.handoff_record || null,\n    response: {\n      status: finalStatus,\n      subagent: (base.orchestration && base.orchestration.target_agent) || base.active_subagent || 'openai_writer',\n      reply: forcedReply || parsed.reply || 'Posso ajudar com horário, endereço e exames da Bio Análise.',\n      handoff: finalHandoff,\n      handoff_category: finalCategory,\n      queue_tags: finalHandoff ? ['human_handoff', finalCategory || 'general_handoff'] : [],\n      reason_codes: (\n        Array.isArray(parsed.reason_codes) && parsed.reason_codes.length\n          ? parsed.reason_codes\n          : ((base.orchestration && base.orchestration.reason_codes) || [])\n      )\n    }\n  }\n}];"
+      },
+      "id": "eb9ad7be-7049-4c8c-9d65-023cdfc4d240",
+      "name": "Aplicar Resposta OpenAI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4272,
+        -1264
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst resp = item.response || {};\nconst orch = item.orchestration || {};\nconst t = item.triage || {};\nconst ctx = item.conversation_context || {};\nconst safeData = item.safe_data || {};\n\nlet status = 'answered_by_ai';\nif (resp.handoff) status = 'awaiting_human';\nelse if (resp.status === 'need_clarification') status = 'awaiting_customer';\nelse if (resp.status === 'handoff_ready') status = 'awaiting_human';\n\nconst quotedExams =\n  Array.isArray(safeData.exams)\n    ? safeData.exams\n    : (ctx.last_quoted_exams || []);\n\nconst examNamesFromSafeData =\n  Array.isArray(safeData.exam_names_list) && safeData.exam_names_list.length\n    ? safeData.exam_names_list\n    : (\n        Array.isArray(safeData.exames) && safeData.exames.length\n          ? safeData.exames.map(e => e.nome).filter(Boolean)\n          : []\n      );\n\nconst examNamesFromTriage =\n  Array.isArray(t.exam_names_list) && t.exam_names_list.length\n    ? t.exam_names_list\n    : [];\n\nconst examNamesFromConversation =\n  Array.isArray((item.conversation_context || {}).last_exam_names_list) &&\n  (item.conversation_context || {}).last_exam_names_list.length\n    ? (item.conversation_context || {}).last_exam_names_list\n    : [];\n\nconst examNamesFromContext =\n  Array.isArray(ctx.last_exam_names_list)\n    ? ctx.last_exam_names_list\n    : [];\n\nconst finalExamNamesList =\n  examNamesFromSafeData.length\n    ? examNamesFromSafeData\n    : (\n        examNamesFromConversation.length\n          ? examNamesFromConversation\n          : (\n              examNamesFromTriage.length\n                ? examNamesFromTriage\n                : examNamesFromContext\n            )\n      );\n\n// ==============================\n// CAMPOS DE ORÇAMENTO\n// ==============================\nconst budgetExamNamesFromSafe =\n  Array.isArray(safeData.budget_exam_names_list) && safeData.budget_exam_names_list.length\n    ? safeData.budget_exam_names_list\n    : [];\n\nconst budgetExamNamesFromConversation =\n  Array.isArray((item.conversation_context || {}).budget_exam_names_list) &&\n  (item.conversation_context || {}).budget_exam_names_list.length\n    ? (item.conversation_context || {}).budget_exam_names_list\n    : [];\n\nconst budgetExamNamesFromContext =\n  Array.isArray(ctx.budget_exam_names_list)\n    ? ctx.budget_exam_names_list\n    : [];\n\nconst finalBudgetExamNamesList =\n  budgetExamNamesFromSafe.length\n    ? budgetExamNamesFromSafe\n    : (\n        budgetExamNamesFromConversation.length\n          ? budgetExamNamesFromConversation\n          : (\n              finalExamNamesList.length\n                ? finalExamNamesList\n                : budgetExamNamesFromContext\n            )\n      );\n\nconst budgetResolvedExamsFromSafe =\n  Array.isArray(safeData.budget_resolved_exams) && safeData.budget_resolved_exams.length\n    ? safeData.budget_resolved_exams\n    : (\n        Array.isArray(safeData.exames) && safeData.exames.length\n          ? safeData.exames\n          : []\n      );\n\nconst budgetResolvedExamsFromContext =\n  Array.isArray(ctx.budget_resolved_exams)\n    ? ctx.budget_resolved_exams\n    : [];\n\nconst finalBudgetResolvedExams =\n  budgetResolvedExamsFromSafe.length\n    ? budgetResolvedExamsFromSafe\n    : budgetResolvedExamsFromContext;\n\nlet budgetTotalFromSafe = safeData.budget_total_snapshot ?? null;\n\nif (\n  budgetTotalFromSafe === null &&\n  typeof safeData.price_summary === 'string'\n) {\n  const match = safeData.price_summary.match(/Valor total:\\s*R\\$\\s*([\\d.,]+)/i);\n  if (match && match[1]) {\n    budgetTotalFromSafe = `R$ ${match[1].replace(/^R\\$\\s*/i, '')}`;\n  }\n}\n\nconst budgetTotalSnapshot =\n  budgetTotalFromSafe ??\n  (item.conversation_context || {}).budget_total_snapshot ??\n  ctx.budget_total_snapshot ??\n  null;\n\nconst budgetPaymentType =\n  safeData.budget_payment_type ||\n  (item.conversation_context || {}).budget_payment_type ||\n  ctx.budget_payment_type ||\n  null;\n\nconst budgetModeActive =\n  typeof safeData.budget_mode_active === 'boolean'\n    ? safeData.budget_mode_active\n    : (\n        typeof (item.conversation_context || {}).budget_mode_active === 'boolean'\n          ? (item.conversation_context || {}).budget_mode_active\n          : (\n              typeof ctx.budget_mode_active === 'boolean'\n                ? ctx.budget_mode_active\n                : false\n            )\n      );\n\n// ==============================\n// CAMPOS COLETADOS DE AGENDAMENTO\n// ==============================\nconst finalCustomerName =\n  safeData.customer_name ||\n  (item.conversation_context || {}).paciente_nome ||\n  item.paciente_nome ||\n  ctx.paciente_nome ||\n  item.customer_name ||\n  null;\n\nconst finalCustomerPhone =\n  safeData.customer_phone ||\n  (item.conversation_context || {}).customer_phone ||\n  ctx.customer_phone ||\n  item.customer_phone ||\n  (item.phone_normalized ? `+${item.phone_normalized}` : null) ||\n  null;\n\nconst finalTipoColeta =\n  safeData.tipo_coleta ||\n  (item.conversation_context || {}).tipo_coleta ||\n  ctx.tipo_coleta ||\n  null;\n\nconst finalEnderecoColeta =\n  safeData.endereco_coleta ||\n  (item.conversation_context || {}).endereco_coleta ||\n  ctx.endereco_coleta ||\n  null;\n\nconst finalDataPreferida =\n  safeData.data_preferida ||\n  (item.conversation_context || {}).data_preferida ||\n  ctx.data_preferida ||\n  null;\n\nconst finalHorarioPreferido =\n  safeData.horario_preferido ||\n  (item.conversation_context || {}).horario_preferido ||\n  ctx.horario_preferido ||\n  null;\n\n// handoff deve refletir execução atual\nconst handoffRequiredNow = Boolean(resp.handoff);\nconst humanActiveNow = Boolean(resp.handoff);\n\nconst updated_context = {\n  ...ctx,\n\n  paciente_id: item.paciente_id || ctx.paciente_id || null,\n  paciente_nome: finalCustomerName,\n  customer_phone: finalCustomerPhone,\n\n  last_message_at: new Date().toISOString(),\n  last_intent: orch.intent || t.intent || ctx.last_intent || null,\n  last_confidence: orch.confidence || t.confidence || ctx.last_confidence || null,\n\n  last_exam_name_raw:\n    (safeData.exame || {}).nome ||\n    t.exam_name_raw ||\n    (finalExamNamesList[0] || null) ||\n    ctx.last_exam_name_raw ||\n    null,\n\n  last_exam_names_list:\n    finalExamNamesList.length\n      ? finalExamNamesList\n      : (ctx.last_exam_names_list || []),\n\n  budget_mode_active: budgetModeActive,\n\n  budget_exam_names_list:\n    finalBudgetExamNamesList.length\n      ? finalBudgetExamNamesList\n      : (ctx.budget_exam_names_list || []),\n\n  budget_resolved_exams:\n    finalBudgetResolvedExams.length\n      ? finalBudgetResolvedExams\n      : (ctx.budget_resolved_exams || []),\n\n  budget_total_snapshot: budgetTotalSnapshot,\n  budget_payment_type: budgetPaymentType,\n\n  last_input_type: item.last_input_type || ctx.last_input_type || 'text',\n\n  image_context_active: item.image_context_active || false,\n  last_image_exams_text: item.image_exams_extracted || ctx.last_image_exams_text || '',\n  last_image_exams_list: item.image_exams_list || ctx.last_image_exams_list || [],\n\n  current_status: status,\n  current_owner: resp.handoff ? 'human_queue' : (resp.subagent || 'ai_agent'),\n\n  handoff_required: handoffRequiredNow,\n  human_active: humanActiveNow,\n  handoff_reason_codes: resp.reason_codes || [],\n\n  collect_field:\n    item.collect_field ||\n    (item.conversation_context || {}).collect_field ||\n    ctx.collect_field ||\n    null,\n\n  agendamento_etapa:\n    (item.conversation_context || {}).agendamento_etapa ||\n    ctx.agendamento_etapa ||\n    null,\n\n  tipo_coleta: finalTipoColeta,\n  endereco_coleta: finalEnderecoColeta,\n  data_preferida: finalDataPreferida,\n  horario_preferido: finalHorarioPreferido,\n\n  ambiguous_exam_query:\n    (item.conversation_context || {}).ambiguous_exam_query ||\n    ctx.ambiguous_exam_query ||\n    null,\n\n  ambiguous_exam_options:\n    (item.conversation_context || {}).ambiguous_exam_options ||\n    ctx.ambiguous_exam_options ||\n    [],\n\n  last_quoted_exams: quotedExams\n};\n\nreturn [{\n  json: {\n    ...item,\n    updated_context\n  }\n}];"
+      },
+      "id": "f63dfb8c-209d-46e5-bb92-38be44c01b6e",
+      "name": "Registrar Contexto",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4688,
+        -1472
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/handoffs",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.handoff_record || { conversation_id: $json.conversation_id, patient_name: $json.customer_name, patient_phone: $json.customer_phone, canal: 'whatsapp', categoria: ($json.response||{}).handoff_category || 'general', reason_codes: ($json.response||{}).reason_codes || [], status: 'pending' } }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "a1c77596-e638-4e1a-bb3d-7d5448a9a17c",
+      "name": "Salvar Handoff Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5168,
+        -1584
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVO_BASE_URL + '/message/sendText/' + $env.EVO_INSTANCE }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVO_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  number: String(\n    $json.telefone ||\n    $('Normalizar Entrada WhatsApp').item.json.phone_normalized ||\n    (($json.data?.key?.remoteJid || '').split('@')[0]) ||\n    ''\n  ).replace(/\\D/g, ''),\n  text: String(\n    (($('Registrar Contexto').item.json.response || {}).reply) ||\n    'Mensagem vazia do bot'\n  )\n} }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "2e51a281-e304-4979-84de-52b729eb8fcf",
+      "name": "Enviar Resposta WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5248,
+        -1280
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ { ok:true, workflow:'Bio Analise WhatsApp v3.2.0', timestamp:new Date().toISOString(), conversation_id: $('Normalizar Entrada WhatsApp').item.json.conversation_id, intent: ($json.orchestration||{}).intent||null, decision: ($json.orchestration||{}).decision||null, handoff: ($json.response||{}).handoff||false, human_silenced: ($json.response||{}).bot_silenced||false } }}",
+        "options": {}
+      },
+      "id": "06cfd997-77a4-4b2d-98cb-264b0a730b77",
+      "name": "Saida Final",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        7520,
+        -1408
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "36d0243b-8ade-47c3-b12c-589571302216",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -512,
+        -2240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst errorData = $input.item.json;\nconst fallback  = 'Desculpe, ocorreu um problema em nosso sistema. Entre em contato pelo (64) 3603-1306 ou tente novamente.';\nconst phone     = ((errorData.json||{}).phone_normalized) || null;\nreturn [{ json: { fallback_reply: fallback, phone_normalized: phone,\n  error_info: { node: ((errorData.node||{}).name)||'unknown', message: ((errorData.error||{}).message)||'Erro desconhecido', timestamp: new Date().toISOString() }\n} }];\n"
+      },
+      "id": "872128ec-e70f-47ef-9f44-00ec33ca0b8d",
+      "name": "Resposta Fallback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -304,
+        -2240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVO_BASE_URL }}/message/sendText/{{ $env.EVO_INSTANCE }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVO_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { number: $json.phone_normalized||'', text: $json.fallback_reply||'Ocorreu um problema. Ligue: (64) 3603-1306.' } }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "fff10b16-d6c2-4491-a4cd-0db87066aec5",
+      "name": "Enviar Fallback WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -80,
+        -2240
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/exames?status=eq.ativo&select=id,nome,tipo,valor,convenio,aliases,preparo,prazo_entrega,precisa_agendamento,restrito,pode_cotar_whatsapp,precisa_jejum,horas_jejum",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "id": "4bb53e41-0681-4c85-bee5-cc1a00e1633d",
+      "name": "Buscar Catalogo Exames1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        288,
+        -1824
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const configData = $('Config Clinica').item.json;\n\n// pega TODOS os itens que vieram do Buscar Catalogo Exames1\nconst allItems = $input.all();\nconst exam_catalog = allItems.map(i => i.json).filter(Boolean);\n\nreturn [{\n  json: {\n    ...configData,\n    exam_catalog,\n    exam_catalog_loaded: exam_catalog.length > 0,\n    exam_catalog_count: exam_catalog.length\n  }\n}];"
+      },
+      "id": "5723df70-7f93-4fd1-ba9b-4675a3c63433",
+      "name": "Montar Base1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        528,
+        -1824
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/pacientes?phone_normalized=eq.{{ $json.phone_normalized }}&limit=1",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "id": "4dbec376-6525-4e01-a96a-edce4a2d80d1",
+      "name": "Verificar Paciente Supabase1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        816,
+        -1568
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/pacientes?on_conflict=phone_normalized",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"phone_normalized\": \"{{ $('Normalizar Entrada WhatsApp').item.json.phone_normalized }}\",\n  \"nome\": \"{{ $('Normalizar Entrada WhatsApp').item.json.customer_name || 'Cliente WhatsApp' }}\",\n  \"nome_completo\": \"{{ $('Normalizar Entrada WhatsApp').item.json.customer_name || 'Cliente WhatsApp' }}\",\n  \"canal\": \"whatsapp\"\n}",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "timeout": 15000
+        }
+      },
+      "id": "1a8b0d38-4f05-4a80-9525-ee18491e68f9",
+      "name": "Upsert Paciente1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        816,
+        -1360
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/atendimentos?select=*&conversation_id=eq.{{ $('Normalizar Entrada WhatsApp').item.json.conversation_id }}&limit=1",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "id": "fe30b30c-e86f-474c-9b0d-670b5e01c1d1",
+      "name": "Carregar Atendimento1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        816,
+        -1168
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $('Normalizar Entrada WhatsApp').item.json;\n\nconst upsertPac = $('Upsert Paciente1').item.json || {};\nconst verifyPac = $('Verificar Paciente Supabase1').item.json || {};\n\nconst paciente = upsertPac.id ? upsertPac : verifyPac;\n\nconst atendimentoArr = $input.item.json;\nconst atendimento = Array.isArray(atendimentoArr) && atendimentoArr.length\n  ? atendimentoArr[0]\n  : (atendimentoArr || {});\n\n// reaproveita contexto salvo no Supabase\nconst contextoSalvo =\n  atendimento.contexto && typeof atendimento.contexto === 'object'\n    ? atendimento.contexto\n    : {};\n\nreturn [{\n  json: {\n    ...item,\n    paciente_id: paciente.id || null,\n    paciente_nome: paciente.nome || paciente.nome_completo || item.customer_name || null,\n    conversation_context: {\n      ...contextoSalvo,\n      ...(item.conversation_context || {}),\n      paciente_id: paciente.id || contextoSalvo.paciente_id || null,\n      paciente_nome: paciente.nome || paciente.nome_completo || item.customer_name || contextoSalvo.paciente_nome || null,\n      conversation_id: item.conversation_id || contextoSalvo.conversation_id || null,\n      human_active: atendimento.human_active || false\n    },\n    atendimento\n  }\n}];"
+      },
+      "id": "9286054c-0de1-4e9d-83ac-3873b62cee5b",
+      "name": "Montar Contexto1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1136,
+        -1648
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "hl",
+              "leftValue": "={{ $json.conversation_context.human_active }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "aa7523e6-e2dd-4b58-9586-6ecb8541991f",
+      "name": "If Atendimento Humano1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1424,
+        -1648
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Quando atendente humano está ativo — apenas sincroniza para Chatwoot, bot fica mudo\nconst item = $input.item.json;\nconst ctx  = item.conversation_context || {};\nreturn [{ json: {\n  ...item,\n  response: {\n    status: 'human_active',\n    subagent: 'human_lock',\n    reply: null,          // NÃO envia resposta\n    handoff: false,\n    bot_silenced: true\n  },\n  updated_context: {\n    ...ctx,\n    last_message_at: new Date().toISOString(),\n    current_status: 'awaiting_human',\n    current_owner: 'human_queue'\n  }\n} }];\n"
+      },
+      "id": "b8de4424-8c12-4ee1-afdb-7382ff1749bb",
+      "name": "Sync Humano Chatwoot1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1728,
+        -1840
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer SUACHAVE_OPENAI_AQUI"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"model\": \"gpt-4o-mini\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [\n        {\n          \"type\": \"text\",\n          \"text\": \"Você é um assistente de extração de exames médicos. Extraia apenas o nome dos exames contidos na imagem.\"\n        },\n        {\n          \"type\": \"image_url\",\n          \"image_url\": {\n            \"url\": \"data:{{$json.mimetype}};base64,{{$json.base64}}\"\n          }\n        }\n      ]\n    }\n  ],\n  \"max_tokens\": 300\n}",
+        "options": {}
+      },
+      "id": "39da357b-609e-4bba-92de-e68c98bd414c",
+      "name": "OpenAI Visao Imagem",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2112,
+        -1504
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVO_BASE_URL }}/chat/getBase64FromMediaMessage/{{ $env.EVO_INSTANCE }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVO_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { message: $json.media_payload } }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "f4e2cd71-44f7-4212-ac75-d3537b6e70a3",
+      "name": "Baixar PDF Evolution1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1888,
+        -1312
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer SUACHAVE_OPENAI_AQUI"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"model\": \"gpt-4o-mini\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Você é um assistente de extração de exames médicos. O usuário enviou um PDF, porém a API atual não extrai PDFs nativamente no endpoint de chat. Analise o texto: {{$json.text || 'Sem texto extraído'}}\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "ae6fdf8d-589c-44c0-875a-8e8aab46fd3b",
+      "name": "OpenAI Visao PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2112,
+        -1312
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/atendimentos?on_conflict=conversation_id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n{\n  conversation_id: $json.conversation_id || null,\n  patient_id: $json.paciente_id || ($json.conversation_context || {}).paciente_id || null,\n  nome_paciente: $json.customer_name || $json.paciente_nome || null,\n  telefone: $json.phone_normalized || $json.customer_phone || null,\n  canal: 'whatsapp',\n  status: ($json.updated_context || {}).current_status || 'awaiting_customer',\n  owner_type: (Boolean((($json.updated_context || {}).human_active)) || Boolean((($json.response || {}).handoff))) ? 'human' : 'ai',\n  owner_name: ($json.updated_context || {}).current_owner || null,\n  ultima_intencao: ($json.updated_context || {}).last_intent || ($json.orchestration || {}).intent || null,\n  ultimo_input_tipo: ($json.updated_context || {}).last_input_type || 'text',\n  mensagem_entrada: $json.message_text || (((($json.data || {}).message || {}).conversation)) || null,\n  mensagem_saida: (($json.response || {}).reply) || null,\n  confianca: ($json.updated_context || {}).last_confidence || ($json.orchestration || {}).confidence || ($json.triage || {}).confidence || null,\n  exame: ($json.updated_context || {}).last_exam_name_raw || null,\n  convenio: null,\n  handoff: Boolean((($json.updated_context || {}).handoff_required)) || Boolean((($json.response || {}).handoff)),\n  observacoes: $json.image_exams_extracted || null,\n  image_exams_list: ($json.updated_context || {}).last_image_exams_list || [],\n  image_exams_text: ($json.updated_context || {}).last_image_exams_text || '',\n  contexto: $json.updated_context || {}\n}\n}}",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "timeout": 15000
+        }
+      },
+      "id": "e832d7e5-2329-4634-8a11-98ed4924df2a",
+      "name": "Salvar Atendimento Supabase1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4688,
+        -1248
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "hc",
+              "leftValue": "={{ Boolean(($json.response || {}).handoff) || Boolean(($json.updated_context || {}).handoff_required) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "7fa07240-f0aa-485c-a5a3-889a80164d8e",
+      "name": "If Handoff1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4928,
+        -1424
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "=={{ {\n  chatwoot_config: {\n    base_url: $env.CHATWOOT_URL,\n    account_id: $env.CHATWOOT_ACCOUNT_ID,\n    inbox_id: $env.CHATWOOT_INBOX_ID,\n    api_token: $env.CHATWOOT_TOKEN\n  }\n} }}",
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "69ad7467-196d-4f12-8cac-fbc9c940b7ea",
+      "name": "Config Chatwoot1",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        5584,
+        -1840
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst item    = $input.item.json;\nconst resp    = item.response || {};\nconst orch    = item.orchestration || {};\nconst config  = item.chatwoot_config || {};\nconst base    = String(config.base_url||'').trim().replace(/\\/$/,'');\nconst accId   = String(config.account_id||'').trim();\nconst inboxId = String(config.inbox_id||'').trim();\nconst token   = String(config.api_token||'').trim();\nconst enabled = Boolean(base && accId && inboxId && token && !inboxId.includes('PREENCHER') && !token.includes('PREENCHER'));\n\nconst desired = resp.handoff ? 'pending' : 'open';\nconst extKey  = item.conversation_id || item.phone_normalized || 'unknown';\nconst note    = [\n  'Resposta IA: ' + (resp.reply || 'N/A'),\n  'Intent: ' + (orch.intent||'desconhecido'),\n  'Decisão: ' + (orch.decision||'N/A'),\n  resp.handoff ? 'HANDOFF: ' + (resp.handoff_category||'general') : null\n].filter(Boolean).join('\\n');\n\nreturn [{ json: { ...item, chatwoot_sync: {\n  enabled, base_url: base, account_id: accId,\n  inbox_id: inboxId ? Number(inboxId) : null,\n  api_token: token,\n  external_key: extKey,\n  customer_message: item.message_text || '',\n  private_note: note,\n  desired_status: desired,\n  contact_payload: {\n    inbox_id: inboxId ? Number(inboxId) : null,\n    name: item.customer_name || 'Cliente WhatsApp',\n    phone_number: item.customer_phone || '',\n    identifier: 'wa:' + extKey,\n    custom_attributes: { source: 'whatsapp', conversation_id: item.conversation_id }\n  }\n} } }];\n"
+      },
+      "id": "0fac55dc-abd6-433c-bbd5-c5ba4a2956b2",
+      "name": "Preparar Sync Chatwoot1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5824,
+        -1424
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "ca",
+              "leftValue": "={{ $json.chatwoot_sync.enabled }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "71281165-eef7-4a55-af40-bc088d86a4b2",
+      "name": "If Chatwoot Ativo1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        6048,
+        -1424
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst item = $input.item.json;\nconst sd   = $getWorkflowStaticData('global');\nsd.chatwoot_maps = sd.chatwoot_maps || {};\nconst map  = sd.chatwoot_maps[item.chatwoot_sync.external_key] || null;\nconst hasCwIds = Boolean(map && map.conversation_id && map.contact_id);\nreturn [{ json: {\n  ...item,\n  // Propaga IDs diretamente para compatibilidade com PATCH de atualização\n  chatwoot_conversation_id: map ? map.conversation_id : null,\n  chatwoot_contact_id:      map ? map.contact_id : null,\n  chatwoot_state: {\n    has_mapping:     hasCwIds,\n    contact_id:      map ? map.contact_id : null,\n    conversation_id: map ? map.conversation_id : null,\n    inbox_id:        map ? map.inbox_id : item.chatwoot_sync.inbox_id,\n    updated_at:      map ? map.updated_at : null\n  }\n} }];\n"
+      },
+      "id": "422eff4b-5566-4432-b782-e9e547f2d392",
+      "name": "Ler Mapa Chatwoot1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6240,
+        -1744
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "ch",
+              "leftValue": "={{ $json.chatwoot_state.has_mapping }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d5ef0fc5-0237-4922-befc-971e73a42e8b",
+      "name": "If Tem Conversa Chatwoot1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        6464,
+        -1744
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.chatwoot_sync.base_url + '/api/v1/accounts/' + $json.chatwoot_sync.account_id + '/contacts' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "api_access_token",
+              "value": "={{ $('Preparar Sync Chatwoot1').item.json.chatwoot_sync.api_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.chatwoot_sync.contact_payload }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "6c43080e-f2c8-480e-a446-6e15da438e91",
+      "name": "Criar Contato Chatwoot1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6672,
+        -1520
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Preparar Sync Chatwoot1').item.json.chatwoot_sync.base_url + '/api/v1/accounts/' + $('Preparar Sync Chatwoot1').item.json.chatwoot_sync.account_id + '/conversations' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "api_access_token",
+              "value": "={{ $('Preparar Sync Chatwoot1').item.json.chatwoot_sync.api_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => { const b=($('Preparar Sync Chatwoot1').item.json.chatwoot_sync); const c=$json||{}; const ci=Array.isArray(c.contact_inboxes)?c.contact_inboxes:[]; const m=ci.find(x=>Number((x.inbox||{}).id)===Number(b.inbox_id))||ci[0]||{}; return { source_id:m.source_id||null, inbox_id:Number(b.inbox_id||0), contact_id:c.id||null, status:b.desired_status }; })() }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "734ca187-308b-4c7b-9e5c-299e484a6426",
+      "name": "Criar Conversa Chatwoot1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6896,
+        -1520
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst base  = $('Preparar Sync Chatwoot1').item.json;\nconst cont  = $('Criar Contato Chatwoot1').item.json || {};\nconst conv  = $input.item.json || {};\nconst sd    = $getWorkflowStaticData('global');\nsd.chatwoot_maps = sd.chatwoot_maps || {};\nconst inboxId = Number(base.chatwoot_sync.inbox_id||0);\nconst ci = Array.isArray(cont.contact_inboxes) ? cont.contact_inboxes : [];\nconst m  = ci.find(x=>Number((x.inbox||{}).id)===inboxId)||ci[0]||{};\nsd.chatwoot_maps[base.chatwoot_sync.external_key] = {\n  contact_id: cont.id||null, conversation_id: conv.id||null,\n  inbox_id: inboxId, updated_at: new Date().toISOString()\n};\nconst chatwoot_contact_id     = cont.id || null;\nconst chatwoot_conversation_id = conv.id || null;\nreturn [{ json: {\n  ...base,\n  chatwoot_contact_id,\n  chatwoot_conversation_id,\n  chatwoot_state: {\n    has_mapping:     true,\n    contact_id:      chatwoot_contact_id,\n    conversation_id: chatwoot_conversation_id,\n    inbox_id:        inboxId\n  }\n} }];\n"
+      },
+      "id": "80ea2551-4102-47e8-a932-c32fc8311682",
+      "name": "Salvar Mapa Chatwoot1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7104,
+        -1520
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.chatwoot_sync.base_url + '/api/v1/accounts/' + $json.chatwoot_sync.account_id + '/conversations/' + $json.chatwoot_state.conversation_id + '/messages' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "api_access_token",
+              "value": "={{ $('Preparar Sync Chatwoot1').item.json.chatwoot_sync.api_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { content: $json.chatwoot_sync.customer_message || $('Normalizar Entrada WhatsApp').item.json.message_text || '', message_type:'incoming', private:false } }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "a88815b7-6001-410a-aa64-37ce849e82dd",
+      "name": "Chatwoot Msg Cliente1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        7248,
+        -1760
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Preparar Sync Chatwoot1').item.json.chatwoot_sync.base_url + '/api/v1/accounts/' + $('Preparar Sync Chatwoot1').item.json.chatwoot_sync.account_id + '/conversations/' + $json.chatwoot_state.conversation_id + '/messages' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "api_access_token",
+              "value": "={{ $('Preparar Sync Chatwoot1').item.json.chatwoot_sync.api_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { content: $('Preparar Sync Chatwoot1').item.json.chatwoot_sync.private_note, message_type:'outgoing', private:true } }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "53769a15-b03d-4838-8780-ef5a73431cfa",
+      "name": "Chatwoot Nota IA1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        7472,
+        -1744
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Preparar Sync Chatwoot1').item.json.chatwoot_sync.base_url + '/api/v1/accounts/' + $('Preparar Sync Chatwoot1').item.json.chatwoot_sync.account_id + '/conversations/' + $json.chatwoot_state.conversation_id + '/toggle_status' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "api_access_token",
+              "value": "={{ $('Preparar Sync Chatwoot1').item.json.chatwoot_sync.api_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { status: $('Preparar Sync Chatwoot1').item.json.chatwoot_sync.desired_status } }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "b82eecef-e0d9-4632-b2e2-5f7dfb29725a",
+      "name": "Chatwoot Status1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        7696,
+        -1744
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/atendimentos?conversation_id=eq.{{ $('Preparar Sync Chatwoot1').item.json.chatwoot_sync.external_key }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { chatwoot_conversation_id: $json.chatwoot_state.conversation_id || null, chatwoot_contact_id: $json.chatwoot_state.contact_id || null } }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "cf46524e-fa53-4201-b40c-7db1d249c90a",
+      "name": "Atualizar IDs Chatwoot Supabase1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        7904,
+        -1744
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\nconst data = body.data || {};\nconst key = data.key || {};\nconst msg = data.message || {};\n\nconst ev = String(body.event || '').toLowerCase();\nconst fromMe = Boolean(key.fromMe);\n\n// ignora mensagens enviadas pela própria instância\nif (fromMe) {\n  return [];\n}\n\n// só trabalhamos com estes eventos\nif (!['messages.upsert', 'messages.update'].includes(ev)) {\n  return [];\n}\n\n// extrai texto\nconst text =\n  msg.conversation ||\n  msg.extendedTextMessage?.text ||\n  msg.imageMessage?.caption ||\n  msg.videoMessage?.caption ||\n  msg.documentMessage?.caption ||\n  '';\n\n// detecta tipo\nconst messageType =\n  data.messageType ||\n  Object.keys(msg || {})[0] ||\n  'unknown';\n\nconst isAudio = ['audioMessage', 'pttMessage'].includes(messageType);\nconst isImage = messageType === 'imageMessage';\nconst isDocument = messageType === 'documentMessage';\n\n// mensagem válida precisa ter texto OU mídia suportada\nconst hasUsefulPayload =\n  Boolean(String(text).trim()) || isAudio || isImage || isDocument;\n\nif (!hasUsefulPayload) {\n  return [];\n}\n\n// id base da mensagem\nconst baseMessageId =\n  key.id ||\n  data.key?.id ||\n  `${key.remoteJid || 'unknown'}::${data.messageTimestamp || Date.now()}::${messageType}`;\n\n// static data\nconst sd = $getWorkflowStaticData('global');\nsd.processed_messages = sd.processed_messages || {};\n\n// estrutura por mensagem\nif (!sd.processed_messages[baseMessageId]) {\n  sd.processed_messages[baseMessageId] = {\n    upsert: false,\n    update: false,\n    created_at: Date.now()\n  };\n}\n\nconst record = sd.processed_messages[baseMessageId];\n\n// REGRA OPERACIONAL:\n// 1) processa upsert normalmente, uma única vez\n// 2) update só processa se vier com payload útil e ainda não houve upsert\nif (ev === 'messages.upsert') {\n  if (record.upsert) {\n    return [];\n  }\n  record.upsert = true;\n}\n\nif (ev === 'messages.update') {\n  // se já teve upsert, ignora update\n  if (record.upsert) {\n    return [];\n  }\n\n  // se já processou update antes, ignora\n  if (record.update) {\n    return [];\n  }\n\n  record.update = true;\n}\n\n// limpeza para não crescer demais\nconst entries = Object.entries(sd.processed_messages);\nif (entries.length > 5000) {\n  const ordered = entries.sort((a, b) => {\n    const ta = Number(a[1]?.created_at || 0);\n    const tb = Number(b[1]?.created_at || 0);\n    return ta - tb;\n  });\n\n  const toRemove = ordered.slice(0, entries.length - 3000);\n  for (const [oldId] of toRemove) {\n    delete sd.processed_messages[oldId];\n  }\n}\n\nreturn [\n  {\n    json: {\n      ...body\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        -1792
+      ],
+      "id": "bc9eb8ee-b947-4edb-9663-843f701824a3",
+      "name": "Code in JavaScript"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Detectar Tipo Midia": {
+      "main": [
+        [
+          {
+            "node": "Baixar Audio Evolution",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Baixar Imagem Evolution",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Baixar PDF Evolution1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Subagente de Triagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Base1": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Entrada WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Config Clinica",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evolution API Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config Clinica": {
+      "main": [
+        [
+          {
+            "node": "Buscar Catalogo Exames1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Entrada WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Verificar Paciente Supabase1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Baixar Audio Evolution": {
+      "main": [
+        [
+          {
+            "node": "Gemini Transcricao",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Transcricao": {
+      "main": [
+        [
+          {
+            "node": "Aplicar Transcricao",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aplicar Transcricao": {
+      "main": [
+        [
+          {
+            "node": "Subagente de Triagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Baixar Imagem Evolution": {
+      "main": [
+        [
+          {
+            "node": "Gemini Visao Imagem1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Processar Exames Imagem": {
+      "main": [
+        [
+          {
+            "node": "Subagente de Triagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Processar Exames PDF": {
+      "main": [
+        [
+          {
+            "node": "Subagente de Triagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Subagente de Triagem": {
+      "main": [
+        [
+          {
+            "node": "Agente Orquestrador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agente Orquestrador": {
+      "main": [
+        [
+          {
+            "node": "Switch Decisao",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Decisao": {
+      "main": [
+        [
+          {
+            "node": "Subagente Handoff",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Montar Clarificacao",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Switch Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Subagente Handoff": {
+      "main": [
+        [
+          {
+            "node": "Registrar Contexto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Clarificacao": {
+      "main": [
+        [
+          {
+            "node": "Registrar Contexto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Intent": {
+      "main": [
+        [
+          {
+            "node": "Subagente Institucional",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Subagente Exames e Preparo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Subagente Agendamento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Subagente Institucional": {
+      "main": [
+        [
+          {
+            "node": "Preparar Payload OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Subagente Exames e Preparo": {
+      "main": [
+        [
+          {
+            "node": "Preparar Payload OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Subagente Agendamento": {
+      "main": [
+        [
+          {
+            "node": "Preparar Payload OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar Contexto": {
+      "main": [
+        [
+          {
+            "node": "Salvar Atendimento Supabase1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salvar Handoff Supabase": {
+      "main": [
+        [
+          {
+            "node": "Config Chatwoot1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Resposta WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Config Chatwoot1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Resposta Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resposta Fallback": {
+      "main": [
+        [
+          {
+            "node": "Enviar Fallback WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Catalogo Exames1": {
+      "main": [
+        [
+          {
+            "node": "Montar Base1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar Paciente Supabase1": {
+      "main": [
+        [
+          {
+            "node": "Upsert Paciente1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Paciente1": {
+      "main": [
+        [
+          {
+            "node": "Carregar Atendimento1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Carregar Atendimento1": {
+      "main": [
+        [
+          {
+            "node": "Montar Contexto1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Contexto1": {
+      "main": [
+        [
+          {
+            "node": "If Atendimento Humano1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Atendimento Humano1": {
+      "main": [
+        [
+          {
+            "node": "Sync Humano Chatwoot1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Detectar Tipo Midia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync Humano Chatwoot1": {
+      "main": [
+        [
+          {
+            "node": "Config Chatwoot1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Visao Imagem1": {
+      "main": [
+        [
+          {
+            "node": "Processar Exames Imagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Baixar PDF Evolution1": {
+      "main": [
+        [
+          {
+            "node": "Gemini Visao PDF1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Visao PDF1": {
+      "main": [
+        [
+          {
+            "node": "Processar Exames PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salvar Atendimento Supabase1": {
+      "main": [
+        [
+          {
+            "node": "If Handoff1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Handoff1": {
+      "main": [
+        [
+          {
+            "node": "Salvar Handoff Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Enviar Resposta WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config Chatwoot1": {
+      "main": [
+        [
+          {
+            "node": "Preparar Sync Chatwoot1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Sync Chatwoot1": {
+      "main": [
+        [
+          {
+            "node": "If Chatwoot Ativo1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Chatwoot Ativo1": {
+      "main": [
+        [
+          {
+            "node": "Ler Mapa Chatwoot1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Saida Final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ler Mapa Chatwoot1": {
+      "main": [
+        [
+          {
+            "node": "If Tem Conversa Chatwoot1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Tem Conversa Chatwoot1": {
+      "main": [
+        [
+          {
+            "node": "Chatwoot Msg Cliente1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Criar Contato Chatwoot1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Criar Contato Chatwoot1": {
+      "main": [
+        [
+          {
+            "node": "Criar Conversa Chatwoot1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Criar Conversa Chatwoot1": {
+      "main": [
+        [
+          {
+            "node": "Salvar Mapa Chatwoot1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salvar Mapa Chatwoot1": {
+      "main": [
+        [
+          {
+            "node": "Chatwoot Msg Cliente1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chatwoot Msg Cliente1": {
+      "main": [
+        [
+          {
+            "node": "Chatwoot Nota IA1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chatwoot Nota IA1": {
+      "main": [
+        [
+          {
+            "node": "Chatwoot Status1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chatwoot Status1": {
+      "main": [
+        [
+          {
+            "node": "Atualizar IDs Chatwoot Supabase1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Atualizar IDs Chatwoot Supabase1": {
+      "main": [
+        [
+          {
+            "node": "Saida Final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Payload OpenAI": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Chat Completions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Completions": {
+      "main": [
+        [
+          {
+            "node": "Aplicar Resposta OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aplicar Resposta OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Registrar Contexto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "26c2a2eb-61cb-4931-a169-824325d87ee9",
+  "meta": {
+    "instanceId": "45c47a98d6226d661cffba9376cdf7414de4364e132d0a98b1b706e68f6082ba"
+  },
+  "id": "4xnlpcM5yImTSawl",
+  "tags": []
+}

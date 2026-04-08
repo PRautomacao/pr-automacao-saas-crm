@@ -1,0 +1,300 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  ATTENDANT
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum MessageOrigin {
+  HUMAN
+  BOT
+  SYSTEM
+}
+
+enum ServiceType {
+  PRODUCT
+  SERVICE
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+model Company {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  logo        String?
+  niche       String?
+  phone       String?
+  email       String?
+  address     String?
+  document    String?
+  isActive    Boolean  @default(true)
+  
+  settings    Json     @default("{}")
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       User[]
+  customers   Customer[]
+  tickets     Ticket[]
+  services    Service[]
+  conversations Conversation[]
+  tags        Tag[]
+  auditLogs   AuditLog[]
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String
+  role          UserRole  @default(ATTENDANT)
+  avatar        String?
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+  
+  companyId     String
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tickets       Ticket[]
+  messages      Message[]
+  conversations Conversation[]
+  
+  @@index([companyId])
+  @@index([email])
+}
+
+model Customer {
+  id            String    @id @default(cuid())
+  name          String
+  phone         String
+  email         String?
+  document      String?
+  gender        Gender?
+  birthDate     DateTime?
+  address       String?
+  city          String?
+  state         String?
+  zipCode       String?
+  observations  String?
+  tags          String[]
+  
+  companyId     String
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tickets       Ticket[]
+  conversations Conversation[]
+  
+  @@unique([companyId, phone])
+  @@index([companyId])
+  @@index([phone])
+}
+
+model Ticket {
+  id            String         @id @default(cuid())
+  ticketNumber  String
+  title         String
+  description   String?
+  status        TicketStatus   @default(OPEN)
+  priority      TicketPriority @default(MEDIUM)
+  tags          String[]
+  
+  customerId    String
+  customer      Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  
+  assignedToId  String?
+  assignedTo    User?          @relation(fields: [assignedToId], references: [id])
+  
+  companyId     String
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  serviceId     String?
+  service       Service?       @relation(fields: [serviceId], references: [id])
+  
+  closedAt      DateTime?
+  resolvedAt    DateTime?
+  
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  messages     Message[]
+  
+  @@unique([companyId, ticketNumber])
+  @@index([companyId])
+  @@index([status])
+  @@index([customerId])
+  @@index([assignedToId])
+}
+
+model Message {
+  id            String        @id @default(cuid())
+  content       String
+  direction     String        @default("incoming")
+  origin        MessageOrigin @default(HUMAN)
+  metadata      Json?
+  
+  ticketId      String
+  ticket        Ticket        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  
+  senderId      String?
+  sender        User?         @relation(fields: [senderId], references: [id])
+  
+  companyId     String
+  
+  createdAt     DateTime      @default(now())
+  
+  @@index([ticketId])
+  @@index([companyId])
+  @@index([createdAt])
+}
+
+model Conversation {
+  id            String    @id @default(cuid())
+  channel       String    @default("whatsapp")
+  platformId    String?
+  status        String    @default("open")
+  contactName   String?
+  contactPhone  String?
+  contactEmail  String?
+  
+  customerId    String?
+  customer      Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  
+  companyId     String
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  assignedToId  String?
+  assignedTo    User?     @relation(fields: [assignedToId], references: [id])
+  
+  isBotActive   Boolean   @default(true)
+  lastMessageAt DateTime?
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  conversationMessages ConversationMessage[]
+  
+  @@index([companyId])
+  @@index([status])
+  @@index([contactPhone])
+  @@index([customerId])
+}
+
+model ConversationMessage {
+  id            String        @id @default(cuid())
+  content       String
+  direction     String
+  origin        MessageOrigin @default(HUMAN)
+  metadata      Json?
+  
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  senderId       String?
+  senderName     String?
+  
+  companyId      String
+  
+  createdAt      DateTime      @default(now())
+  
+  @@index([conversationId])
+  @@index([createdAt])
+}
+
+model Service {
+  id          String       @id @default(cuid())
+  name        String
+  description String?
+  category    String?
+  type        ServiceType @default(SERVICE)
+  price       Decimal      @db.Decimal(10, 2)
+  cost        Decimal?    @db.Decimal(10, 2)
+  duration    Int?
+  unit        String?
+  isActive    Boolean      @default(true)
+  
+  companyId   String
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  tickets     Ticket[]
+  
+  @@index([companyId])
+  @@index([isActive])
+  @@index([category])
+}
+
+model Tag {
+  id          String   @id @default(cuid())
+  name        String
+  color       String   @default("#6B7280")
+  
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  action      String
+  entity      String
+  entityId    String?
+  oldValues   Json?
+  newValues   Json?
+  ipAddress   String?
+  userAgent   String?
+  
+  userId      String?
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([companyId])
+  @@index([entity])
+  @@index([userId])
+  @@index([createdAt])
+}

@@ -1,5 +1,12 @@
 # Dependencies
 node_modules/
+.next/
+out/
+build/
+nul
+.next/
+out/
+build/
 
 # Environment / secrets
 .env
