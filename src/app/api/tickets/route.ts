@@ -18,7 +18,7 @@ export async function GET(request: Request) {
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
 
-    const where = {
+    const where: any = {
       companyId: session.user.companyId,
       ...(status && status !== 'all' ? { status: status.toUpperCase() } : {}),
       OR: search ? [
